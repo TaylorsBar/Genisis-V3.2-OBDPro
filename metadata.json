@@ -1,0 +1,10 @@
+{
+  "name": "Copy of Copy of CartelWorx",
+  "description": "A.I first race dash and telemetry ",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation",
+    "camera",
+    "bluetooth"
+  ]
+}
