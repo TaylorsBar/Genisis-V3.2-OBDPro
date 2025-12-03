@@ -17,7 +17,7 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Karapiro Cartel | Genesis OS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
@@ -43,6 +43,10 @@
             backgroundImage: {
               'carbon': "url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAIklEQVQIW2NkQAKrVq36zwjjgzj//v37zwjjgzhhYWGMYAIAdZkKwz/CXYoAAAAASUVORK5CYII=')",
               'mesh': "radial-gradient(#1a1a1a 1px, transparent 1px)"
+            },
+            screens: {
+              'xs': '480px',
+              'uw': '2000px', // Ultrawide displays
             }
           },
         },
@@ -63,6 +67,7 @@
         font-family: 'Inter', sans-serif;
         overflow: hidden; /* App manages scroll */
         -webkit-font-smoothing: antialiased;
+        overscroll-behavior: none; /* Prevent bounce on mobile */
       }
 
       /* Custom Scrollbar for "Technical" feel */

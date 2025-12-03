@@ -229,6 +229,35 @@ export class ObdService {
     });
   }
 
+  // --- Active Tests (Bidirectional) ---
+
+  public async primeFordDieselFuelSystem(): Promise<boolean> {
+      console.log("Initiating Ford Duratorq Fuel Prime Sequence...");
+      // Command: 2F (IO Control) 0201 (Fuel Pump PID) 03 (Short Term) 64 (100% Duty)
+      // This is for CAN bus Fords (~2008+)
+      
+      // Try up to 3 times
+      for (let i = 0; i < 3; i++) {
+          try {
+              // Ensure we are in a mode to accept header changes or active tests
+              await this.runCommand("AT SH 7E0"); // Target ECU specifically if needed, usually 7E0/7E8
+              const response = await this.runCommand("2F 02 01 03 64");
+              
+              // Positive response is usually 6F 02 01...
+              // Negative response is 7F ...
+              if (response.includes("6F") || response.includes("OK")) {
+                  console.log("Fuel Pump Activation Successful");
+                  return true;
+              }
+              // Wait before retry
+              await new Promise(r => setTimeout(r, 500));
+          } catch (e) {
+              console.warn("Prime attempt failed", e);
+          }
+      }
+      return false;
+  }
+
   // --- Diagnostics ---
 
   public async getDiagnosticTroubleCodes(): Promise<DiagnosticCode[]> {

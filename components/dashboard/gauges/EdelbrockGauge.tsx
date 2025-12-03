@@ -89,4 +89,4 @@ const EdelbrockGauge: React.FC<EdelbrockGaugeProps> = ({ label, value, unit, min
   );
 };
 
-export default Edelbroc kGaugekGauge;
+export default EdelbrockGauge;

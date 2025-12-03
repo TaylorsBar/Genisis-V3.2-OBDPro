@@ -92,8 +92,8 @@ const HaltechTachometer: React.FC<HaltechTachometerProps> = ({
   const gradientId = "rpmGradient";
 
   return (
-    <div className="relative w-full h-full max-w-[450px] aspect-square flex items-center justify-center select-none">
-        <svg viewBox="0 0 400 400" className="w-full h-full filter drop-shadow-2xl">
+    <div className="relative w-full h-full flex items-center justify-center select-none">
+        <svg viewBox="0 0 400 400" className="w-full h-full filter drop-shadow-2xl" preserveAspectRatio="xMidYMid meet">
             <defs>
                 {/* Dynamic Gradient using CSS Variables */}
                 <linearGradient id={gradientId} x1="0%" y1="100%" x2="100%" y2="0%">

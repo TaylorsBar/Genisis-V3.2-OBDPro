@@ -5,9 +5,10 @@ interface GForceMeterProps {
     x: number; // Lateral G (Left/Right)
     y: number; // Longitudinal G (Accel/Brake)
     size?: number;
+    transparent?: boolean;
 }
 
-const GForceMeter: React.FC<GForceMeterProps> = ({ x, y, size = 200 }) => {
+const GForceMeter: React.FC<GForceMeterProps> = ({ x, y, size = 200, transparent = false }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const historyRef = useRef<{x: number, y: number}[]>([]);
     
@@ -30,14 +31,14 @@ const GForceMeter: React.FC<GForceMeterProps> = ({ x, y, size = 200 }) => {
         // Only push valid finite numbers
         if (Number.isFinite(x) && Number.isFinite(y)) {
             historyRef.current.push({ x, y });
-            if (historyRef.current.length > 30) historyRef.current.shift();
+            if (historyRef.current.length > 40) historyRef.current.shift();
         }
 
         // Clear
         ctx.clearRect(0, 0, w, h);
 
         // Draw Rings (0.5G, 1.0G, 1.5G)
-        ctx.strokeStyle = '#333';
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
         ctx.lineWidth = 1;
         
         [0.5, 1.0, 1.5].forEach(g => {
@@ -46,10 +47,10 @@ const GForceMeter: React.FC<GForceMeterProps> = ({ x, y, size = 200 }) => {
             ctx.stroke();
             
             // Labels
-            ctx.fillStyle = '#555';
-            ctx.font = '10px monospace';
+            ctx.fillStyle = 'rgba(255,255,255,0.3)';
+            ctx.font = '9px "JetBrains Mono"';
             ctx.textAlign = 'center';
-            ctx.fillText(`${g.toFixed(1)}G`, cx, cy - (g * scale) + 10);
+            if (g < 1.5) ctx.fillText(`${g.toFixed(1)}G`, cx, cy - (g * scale) + 10);
         });
 
         // Draw Crosshair
@@ -70,8 +71,10 @@ const GForceMeter: React.FC<GForceMeterProps> = ({ x, y, size = 200 }) => {
                 if (i === 0) ctx.moveTo(px, py);
                 else ctx.lineTo(px, py);
             });
-            ctx.strokeStyle = 'rgba(0, 240, 255, 0.3)';
-            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = 'rgba(252, 238, 10, 0.4)';
+            ctx.lineWidth = 3;
             ctx.stroke();
         }
 
@@ -82,20 +85,21 @@ const GForceMeter: React.FC<GForceMeterProps> = ({ x, y, size = 200 }) => {
         // Ensure coordinates are valid numbers before drawing gradient
         if (Number.isFinite(dotX) && Number.isFinite(dotY)) {
             try {
-                const gradient = ctx.createRadialGradient(dotX, dotY, 0, dotX, dotY, 15);
-                gradient.addColorStop(0, 'rgba(0, 240, 255, 1)');
-                gradient.addColorStop(0.5, 'rgba(0, 240, 255, 0.4)');
-                gradient.addColorStop(1, 'rgba(0, 240, 255, 0)');
+                // Outer Glow
+                const gradient = ctx.createRadialGradient(dotX, dotY, 0, dotX, dotY, 20);
+                gradient.addColorStop(0, 'rgba(252, 238, 10, 0.8)');
+                gradient.addColorStop(0.4, 'rgba(252, 238, 10, 0.2)');
+                gradient.addColorStop(1, 'rgba(252, 238, 10, 0)');
                 
                 ctx.fillStyle = gradient;
                 ctx.beginPath();
-                ctx.arc(dotX, dotY, 15, 0, Math.PI * 2);
+                ctx.arc(dotX, dotY, 20, 0, Math.PI * 2);
                 ctx.fill();
 
-                // Solid Center
+                // Solid Core
                 ctx.fillStyle = '#fff';
                 ctx.beginPath();
-                ctx.arc(dotX, dotY, 3, 0, Math.PI * 2);
+                ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
                 ctx.fill();
             } catch (e) {
                 // Suppress finite gradient errors
@@ -103,17 +107,17 @@ const GForceMeter: React.FC<GForceMeterProps> = ({ x, y, size = 200 }) => {
         }
 
         // Text Values
-        ctx.fillStyle = 'white';
-        ctx.font = 'bold 12px monospace';
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.font = 'bold 12px "Orbitron"';
         ctx.textAlign = 'right';
-        ctx.fillText(`LAT: ${(Number.isFinite(x) ? x : 0).toFixed(2)}G`, w - 10, h - 20);
+        ctx.fillText(`${(Number.isFinite(x) ? x : 0).toFixed(2)}G`, w - 10, h / 2 - 5);
         ctx.textAlign = 'left';
-        ctx.fillText(`LNG: ${(Number.isFinite(y) ? y : 0).toFixed(2)}G`, 10, h - 20);
+        ctx.fillText(`${(Number.isFinite(y) ? y : 0).toFixed(2)}G`, 10, h / 2 - 5);
 
     }, [x, y, MAX_G, size]);
 
     return (
-        <div className="relative bg-black rounded-full border border-gray-800 shadow-[inset_0_0_20px_rgba(0,0,0,1)]" style={{ width: size, height: size }}>
+        <div className={`relative rounded-full flex items-center justify-center ${transparent ? '' : 'bg-black border border-gray-800 shadow-[inset_0_0_20px_rgba(0,0,0,1)]'}`} style={{ width: size, height: size }}>
              <canvas 
                 ref={canvasRef} 
                 width={size} 

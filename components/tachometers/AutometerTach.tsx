@@ -9,7 +9,7 @@ interface AutometerTachProps {
     maxRpm?: number;
     redline?: number;
     shiftPoint?: number;
-    size?: number;
+    size?: number | string; // Updated type to accept percentage string
 }
 
 const AutometerTach: React.FC<AutometerTachProps> = ({ 
@@ -80,9 +80,12 @@ const AutometerTach: React.FC<AutometerTachProps> = ({
         }
     }
 
+    // Set container style based on size prop
+    const containerStyle = typeof size === 'number' ? { width: size, height: size } : { width: size, height: size };
+
     return (
-        <div className="relative" style={{ width: size, height: size }}>
-            <svg viewBox="0 0 500 400" className="w-full h-full overflow-visible">
+        <div className="relative" style={containerStyle}>
+            <svg viewBox="0 0 500 400" className="w-full h-full overflow-visible" preserveAspectRatio="xMidYMid meet">
                 <defs>
                     {/* Photorealistic Chrome Bezel */}
                     <linearGradient id="bezelGrad" x1="0%" y1="0%" x2="100%" y2="100%">
