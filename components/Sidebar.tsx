@@ -14,19 +14,20 @@ import PaintBrushIcon from './icons/PaintBrushIcon';
 import SoundWaveIcon from './icons/SoundWaveIcon';
 import { useVehicleConnection } from '../hooks/useVehicleData';
 import { ObdConnectionState } from '../types';
+import { KarapiroLogo } from './KarapiroLogo';
 
 const navItems = [
-  { name: 'Cockpit', href: '/', icon: GaugeIcon, category: 'drive' },
-  { name: 'Race Telemetry', href: '/race-pack', icon: StopwatchIcon, category: 'drive' },
-  { name: 'Dyno Lab', href: '/tuning', icon: TuningForkIcon, category: 'engineer' },
-  { name: 'Diagnostics', href: '/diagnostics', icon: ChatIcon, category: 'engineer' },
-  { name: 'AI Core', href: '/ai-engine', icon: EngineIcon, category: 'engineer' },
-  { name: 'AR Vision', href: '/ar-assistant', icon: ARIcon, category: 'engineer' },
-  { name: 'Maintenance', href: '/logbook', icon: WrenchIcon, category: 'manage' },
-  { name: 'Security', href: '/security', icon: ShieldIcon, category: 'manage' },
-  { name: 'Ledger', href: '/hedera', icon: HederaIcon, category: 'manage' },
-  { name: 'Cabin', href: '/accessories', icon: SoundWaveIcon, category: 'config' },
-  { name: 'System', href: '/appearance', icon: PaintBrushIcon, category: 'config' },
+  { name: 'COCKPIT', href: '/', icon: GaugeIcon, category: 'drive' },
+  { name: 'RACE PACK', href: '/race-pack', icon: StopwatchIcon, category: 'drive' },
+  { name: 'DYNO LAB', href: '/tuning', icon: TuningForkIcon, category: 'engineer' },
+  { name: 'DIAGNOSTICS', href: '/diagnostics', icon: ChatIcon, category: 'engineer' },
+  { name: 'AI CORE', href: '/ai-engine', icon: EngineIcon, category: 'engineer' },
+  { name: 'AR VISION', href: '/ar-assistant', icon: ARIcon, category: 'engineer' },
+  { name: 'LOGBOOK', href: '/logbook', icon: WrenchIcon, category: 'manage' },
+  { name: 'SECURITY', href: '/security', icon: ShieldIcon, category: 'manage' },
+  { name: 'LEDGER', href: '/hedera', icon: HederaIcon, category: 'manage' },
+  { name: 'CABIN', href: '/accessories', icon: SoundWaveIcon, category: 'config' },
+  { name: 'SYSTEM', href: '/appearance', icon: PaintBrushIcon, category: 'config' },
 ];
 
 const Sidebar: React.FC = () => {
@@ -48,50 +49,59 @@ const Sidebar: React.FC = () => {
         onMouseLeave={() => setExpanded(false)}
     >
         {/* Brand Mark */}
-        <div className="h-16 flex items-center justify-center border-b border-[#1F1F1F] bg-black relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-brand-cyan/20 to-transparent opacity-50"></div>
-            <span className="font-display font-black text-2xl tracking-tighter text-white z-10">
-                {expanded ? 'GENESIS' : 'G'}
-            </span>
+        <div className="h-16 flex items-center justify-center border-b border-[#1F1F1F] bg-[#020202] relative overflow-hidden">
+            <div className={`transition-opacity duration-300 ${expanded ? 'opacity-100' : 'opacity-0'}`}>
+                <KarapiroLogo className="h-10 w-auto" variant="monochrome" />
+            </div>
+            <div className={`absolute transition-opacity duration-300 ${expanded ? 'opacity-0' : 'opacity-100'}`}>
+                <KarapiroLogo className="h-8 w-auto text-brand-cyan" variant="icon-only" />
+            </div>
         </div>
 
         {/* Navigation */}
-        <div className="flex-1 overflow-y-auto py-4 custom-scrollbar flex flex-col gap-2">
+        <div className="flex-1 overflow-y-auto py-2 custom-scrollbar flex flex-col gap-1">
             {navItems.map((item) => (
                 <NavLink
                     key={item.name}
                     to={item.href}
                     className={({ isActive }) => `
-                        relative flex items-center h-12 px-4 mx-2 rounded transition-all duration-200
+                        relative flex items-center h-10 px-4 mx-0 transition-all duration-100 group
                         ${isActive 
-                            ? 'bg-brand-cyan/10 text-brand-cyan shadow-[0_0_15px_rgba(0,240,255,0.15)] border border-brand-cyan/30' 
-                            : 'text-gray-500 hover:text-gray-200 hover:bg-white/5'}
+                            ? 'bg-[#1a1a1a] text-brand-cyan border-l-2 border-brand-cyan' 
+                            : 'text-gray-500 hover:text-white hover:bg-[#111] border-l-2 border-transparent'}
                     `}
                 >
-                    <item.icon className="w-6 h-6 min-w-[24px]" />
-                    <span className={`ml-4 font-medium text-sm whitespace-nowrap transition-opacity duration-200 ${expanded ? 'opacity-100' : 'opacity-0 hidden'}`}>
+                    <item.icon className="w-5 h-5 min-w-[20px]" />
+                    <span className={`ml-4 font-mono text-[10px] font-bold tracking-widest whitespace-nowrap transition-opacity duration-200 ${expanded ? 'opacity-100' : 'opacity-0 hidden'}`}>
                         {item.name}
                     </span>
                     
-                    {/* Active Indicator Line */}
-                    <NavLink to={item.href} className={({ isActive }) => isActive ? "absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 bg-brand-cyan rounded-r" : "hidden"} />
+                    {/* Hover Glow */}
+                    <div className="absolute inset-0 bg-brand-cyan/5 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity"></div>
                 </NavLink>
             ))}
         </div>
 
         {/* System Status Footer */}
-        <div className="p-2 border-t border-[#1F1F1F] bg-black">
+        <div className="p-0 border-t border-[#1F1F1F] bg-[#020202]">
             <button
                 onClick={handleConnectionClick}
-                className={`w-full flex items-center ${expanded ? 'justify-start px-4' : 'justify-center'} h-12 rounded bg-[#111] border border-[#333] hover:border-brand-cyan/50 transition-all group relative overflow-hidden`}
+                className="w-full flex flex-col h-14 relative overflow-hidden group"
             >
-                <div className={`w-2 h-2 rounded-full ${obdState === ObdConnectionState.Connected ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-red-500'}`}></div>
-                <span className={`ml-3 font-mono text-xs font-bold text-gray-400 group-hover:text-white uppercase transition-all ${expanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>
-                    {obdState === ObdConnectionState.Connected ? 'Online' : 'Offline'}
-                </span>
+                <div className="flex items-center justify-center h-full w-full relative z-10">
+                     <div className={`w-3 h-3 rounded-sm border ${obdState === ObdConnectionState.Connected ? 'bg-green-600 border-green-400' : 'bg-[#222] border-[#444] animate-pulse'}`}></div>
+                     {expanded && (
+                         <div className="ml-3 text-left">
+                             <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">OBD-II PORT</div>
+                             <div className={`text-[9px] font-mono ${obdState === ObdConnectionState.Connected ? 'text-green-500' : 'text-red-500'}`}>
+                                 {obdState === ObdConnectionState.Connected ? 'CONNECTED' : 'DISCONNECTED'}
+                             </div>
+                         </div>
+                     )}
+                </div>
                 
-                {/* Scanline effect on button hover */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                {/* Background Progress Bar Style */}
+                <div className={`absolute bottom-0 left-0 h-0.5 bg-brand-cyan transition-all duration-500 ${obdState === ObdConnectionState.Connected ? 'w-full' : 'w-0'}`}></div>
             </button>
         </div>
     </div>

@@ -1,8 +1,9 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAIStore } from '../stores/aiStore';
 import { useVehicleTelemetry } from '../hooks/useVehicleData';
+import { useVehicleStore } from '../stores/vehicleStore';
 import { sendMessageToAI, processVoiceCommand } from '../services/geminiService';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { useTextToSpeech } from '../hooks/useTextToSpeech';
@@ -33,8 +34,24 @@ const NeuralOrb: React.FC<{ state: string }> = ({ state }) => {
 };
 
 const GlobalAssistant: React.FC = () => {
-    const { isOpen, setIsOpen, mode, setMode, messages, addMessage, state, setState, currentContext } = useAIStore();
+    const { 
+        isOpen, setIsOpen, mode, setMode, messages, addMessage, 
+        state, setState, currentContext, continuousMode, setContinuousMode 
+    } = useAIStore();
+    
+    // Performance optimization: Access latestData via ref for the callback, 
+    // but subscribe to it for rendering UI if needed (though GlobalAssistant doesn't render telemetry directly).
+    // Using the hook causes re-render 20Hz. We accept this re-render to keep the UI "alive" 
+    // but use Refs to stabilize the callbacks sent to hooks.
     const { latestData } = useVehicleTelemetry();
+    const latestDataRef = useRef(latestData);
+    
+    useEffect(() => {
+        latestDataRef.current = latestData;
+    }, [latestData]);
+
+    const { connectObd, scanVehicle, clearVehicleFaults, primeFuelSystem } = useVehicleStore();
+    
     const { speak, cancel } = useTextToSpeech();
     const navigate = useNavigate();
     const location = useLocation();
@@ -47,21 +64,54 @@ const GlobalAssistant: React.FC = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    const handleSend = async (text: string) => {
+    const executeVehicleFunction = async (funcName: string) => {
+        switch (funcName) {
+            case 'start_scan':
+                navigate('/diagnostics');
+                await scanVehicle();
+                break;
+            case 'clear_codes':
+                await clearVehicleFaults();
+                break;
+            case 'prime_fuel':
+                await primeFuelSystem();
+                break;
+            case 'connect_obd':
+                connectObd();
+                break;
+            case 'start_dyno':
+                // Assuming dyno page logic handles auto-start if route active or store action
+                navigate('/tuning');
+                break;
+            default:
+                console.warn("Unknown function:", funcName);
+        }
+    };
+
+    // Memoize the handler to prevent re-creating the SpeechRecognition listener on every frame
+    const handleSend = useCallback(async (text: string) => {
         if (!text.trim()) return;
         
+        // Use functional state updates where possible or refs
         addMessage('user', text);
         setInputValue('');
         setState('thinking');
 
+        // Access refs for stable data snapshot
+        const currentData = latestDataRef.current;
+        // Access current store state (zustand getState would be better but props are fine if deps array is correct)
+        // Here we rely on the component state which is fresh.
+
         try {
-            if (mode === 'voice') {
+            if (useAIStore.getState().mode === 'voice') {
                 // --- Voice Mode: Structured Command Processing ---
-                const response = await processVoiceCommand(text, latestData, location.pathname);
+                const response = await processVoiceCommand(text, currentData, window.location.hash.replace('#', ''));
                 
                 // Execute Action
                 if (response.action === 'NAVIGATE' && response.target) {
                     navigate(response.target);
+                } else if (response.action === 'EXECUTE_FUNCTION' && response.target) {
+                    await executeVehicleFunction(response.target);
                 }
 
                 // Speak Response
@@ -69,10 +119,11 @@ const GlobalAssistant: React.FC = () => {
                 setState('speaking');
                 
                 speak(response.speech, () => {
-                    // CONTINUOUS LOOP: Start listening again after speaking
-                    if (isOpen && mode === 'voice') {
+                    // CONTINUOUS LOOP: Check fresh state from store to see if we should continue
+                    const freshState = useAIStore.getState();
+                    if (freshState.isOpen && freshState.mode === 'voice' && freshState.continuousMode) {
                         setState('listening');
-                        startListening();
+                        // Signal to the effect below to restart listening
                     } else {
                         setState('idle');
                     }
@@ -80,7 +131,7 @@ const GlobalAssistant: React.FC = () => {
 
             } else {
                 // --- Chat Mode: Standard Text Conversation ---
-                const response = await sendMessageToAI(text, latestData, currentContext);
+                const response = await sendMessageToAI(text, currentData, useAIStore.getState().currentContext);
                 addMessage('model', response);
                 setState('speaking');
                 
@@ -95,47 +146,49 @@ const GlobalAssistant: React.FC = () => {
             console.error(e);
             setState('idle');
         }
-    };
+    }, [addMessage, navigate, setState, speak]);
 
-    const { isListening, startListening, stopListening, transcript } = useSpeechRecognition((text) => {
-        handleSend(text);
-    });
+    const { isListening, startListening, stopListening, transcript } = useSpeechRecognition(handleSend);
 
-    // Sync listening state
+    // Sync listening state visually (Safely)
+    // Only transition to listening if we are IDLE. If we are thinking/speaking, ignore the mic status.
     useEffect(() => {
-        if (isListening) setState('listening');
-        else if (state === 'listening' && !isListening) {
-            // Logic handled in useSpeechRecognition onResult, but if it stops unexpectedly:
-            // Keep state as listening if we are waiting for result processing? 
-            // No, setState('idle') is safer unless we are in the loop.
+        if (isListening && state === 'idle') {
+            setState('listening');
         }
-    }, [isListening]);
+    }, [isListening, state, setState]);
+
+    // Handle "Hands-Free Loop" restart.
+    // This effect runs when speech/TTS finishes. 
+    // We check if we are in continuous mode and not currently busy.
+    useEffect(() => {
+        let timer: any;
+        
+        if (continuousMode && isOpen && mode === 'voice' && !isListening && state === 'listening') {
+            // We expect to be listening (state says listening), but the engine isn't (isListening false). 
+            // Restart it. Small delay prevents rapid cycling on errors.
+            timer = setTimeout(() => {
+                startListening();
+            }, 500);
+        }
+        
+        return () => clearTimeout(timer);
+    }, [continuousMode, isOpen, mode, isListening, state, startListening]);
 
     // Cleanup on unmount or close
     useEffect(() => {
         if (!isOpen) {
             stopListening();
-            cancel();
-            setState('idle');
+            cancel(); // Stop TTS
+            if (state !== 'idle') setState('idle');
+            setContinuousMode(false); // Reset drive mode on close for safety
         }
-    }, [isOpen]);
-
-    const toggleVoice = () => {
-        if (isListening) {
-            stopListening();
-            setState('idle');
-        } else {
-            setMode('voice');
-            setIsOpen(true);
-            setState('listening');
-            startListening();
-        }
-    };
+    }, [isOpen, stopListening, cancel, setState, setContinuousMode]);
 
     if (!isOpen) {
         return (
             <button 
-                onClick={() => setIsOpen(true)}
+                onClick={() => { setIsOpen(true); setMode('voice'); setContinuousMode(true); setState('listening'); startListening(); }}
                 className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-black/80 backdrop-blur-md border border-brand-cyan/50 shadow-[0_0_20px_rgba(0,240,255,0.3)] flex items-center justify-center z-50 group hover:scale-110 transition-all"
             >
                 <div className="absolute inset-0 bg-brand-cyan/10 rounded-full animate-ping opacity-20 group-hover:opacity-40"></div>
@@ -147,12 +200,12 @@ const GlobalAssistant: React.FC = () => {
     }
 
     return (
-        <div className={`fixed z-50 transition-all duration-500 ease-out flex flex-col ${mode === 'voice' ? 'bottom-0 left-0 w-full h-full bg-black/90 backdrop-blur-xl items-center justify-center' : 'bottom-6 right-6 w-[400px] h-[600px]'}`}>
+        <div className={`fixed z-50 transition-all duration-500 ease-out flex flex-col ${mode === 'voice' ? 'bottom-0 left-0 w-full h-full bg-black/95 backdrop-blur-xl items-center justify-center' : 'bottom-6 right-6 w-[400px] h-[600px]'}`}>
             
             {/* Main Panel */}
             <div className={`
                 glass-panel border border-white/10 shadow-2xl overflow-hidden flex flex-col relative
-                ${mode === 'voice' ? 'w-full max-w-2xl h-auto min-h-[400px] rounded-3xl bg-transparent border-none shadow-none' : 'rounded-xl h-full bg-[#050505]/90 backdrop-blur-2xl'}
+                ${mode === 'voice' ? 'w-full max-w-3xl h-auto min-h-[500px] rounded-3xl bg-transparent border-none shadow-none' : 'rounded-xl h-full bg-[#050505]/90 backdrop-blur-2xl'}
             `}>
                 
                 {/* Header (Chat Mode) */}
@@ -163,7 +216,7 @@ const GlobalAssistant: React.FC = () => {
                             <span className="text-xs font-display font-bold text-white tracking-widest">KC // AI CORE</span>
                         </div>
                         <div className="flex gap-2">
-                            <button onClick={() => { setMode('voice'); startListening(); }} className="p-1 hover:text-brand-cyan text-gray-500"><MicrophoneIcon className="w-4 h-4" /></button>
+                            <button onClick={() => { setMode('voice'); setContinuousMode(true); setState('listening'); startListening(); }} className="p-1 hover:text-brand-cyan text-gray-500"><MicrophoneIcon className="w-4 h-4" /></button>
                             <button onClick={() => setIsOpen(false)} className="p-1 hover:text-white text-gray-500">&times;</button>
                         </div>
                     </div>
@@ -176,13 +229,20 @@ const GlobalAssistant: React.FC = () => {
                         {/* Background Grid FX */}
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(0,240,255,0.1)_0%,_rgba(0,0,0,0)_70%)] pointer-events-none"></div>
                         
+                        <div className="mb-10 flex flex-col items-center">
+                            <span className="text-brand-cyan font-mono text-xs uppercase tracking-[0.5em] mb-2 opacity-70">
+                                {continuousMode ? "HANDS-FREE DRIVE MODE" : "VOICE COMMAND"}
+                            </span>
+                            <h2 className="text-4xl font-display font-black text-white italic tracking-tighter">GENESIS <span className="text-brand-cyan">AI</span></h2>
+                        </div>
+
                         <NeuralOrb state={state} />
                         
-                        <div className="mt-12 text-center max-w-lg px-6 z-10">
+                        <div className="mt-12 text-center max-w-2xl px-6 z-10 min-h-[120px]">
                             <p className={`font-mono text-sm uppercase tracking-[0.3em] mb-4 transition-colors ${state === 'listening' ? 'text-green-400' : 'text-brand-cyan'}`}>
-                                {state === 'listening' ? 'LISTENING...' : (state === 'speaking' ? 'RESPONDING' : 'PROCESSING')}
+                                {state === 'listening' ? 'LISTENING...' : (state === 'speaking' ? 'KC SPEAKING' : (state === 'thinking' ? 'PROCESSING...' : 'STANDBY'))}
                             </p>
-                            <p className="text-white font-display font-bold text-2xl md:text-3xl leading-tight min-h-[4rem] drop-shadow-lg">
+                            <p className="text-white font-display font-bold text-2xl md:text-4xl leading-tight drop-shadow-lg transition-all">
                                 "{state === 'listening' ? (transcript || "Say a command...") : messages[messages.length-1]?.text}"
                             </p>
                         </div>
@@ -190,16 +250,28 @@ const GlobalAssistant: React.FC = () => {
                         {/* Voice Controls */}
                         <div className="mt-16 flex gap-6 z-10">
                             <button 
-                                onClick={() => { stopListening(); cancel(); setIsOpen(false); }} 
-                                className="px-8 py-3 rounded-full bg-white/5 hover:bg-red-500/20 border border-white/10 hover:border-red-500/50 text-xs font-bold uppercase tracking-widest transition-all text-gray-400 hover:text-red-400"
+                                onClick={() => { 
+                                    setContinuousMode(!continuousMode); 
+                                    if (!continuousMode) startListening(); 
+                                }} 
+                                className={`px-8 py-4 rounded-full border text-xs font-bold uppercase tracking-widest transition-all flex items-center gap-2 ${continuousMode ? 'bg-green-500/20 border-green-500 text-green-400' : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'}`}
                             >
-                                Terminate
+                                <div className={`w-2 h-2 rounded-full ${continuousMode ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}></div>
+                                {continuousMode ? 'Drive Mode ON' : 'Drive Mode OFF'}
                             </button>
+                            
                             <button 
-                                onClick={() => { stopListening(); setMode('chat'); }} 
-                                className="px-8 py-3 rounded-full bg-brand-cyan/10 hover:bg-brand-cyan/20 border border-brand-cyan/30 hover:border-brand-cyan text-brand-cyan text-xs font-bold uppercase tracking-widest transition-all"
+                                onClick={() => { stopListening(); cancel(); setIsOpen(false); }} 
+                                className="px-8 py-4 rounded-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 text-red-400 text-xs font-bold uppercase tracking-widest transition-all"
                             >
-                                Terminal Mode
+                                Dismiss
+                            </button>
+                            
+                            <button 
+                                onClick={() => { stopListening(); setMode('chat'); setContinuousMode(false); }} 
+                                className="px-8 py-4 rounded-full bg-brand-cyan/10 hover:bg-brand-cyan/20 border border-brand-cyan/30 hover:border-brand-cyan text-brand-cyan text-xs font-bold uppercase tracking-widest transition-all"
+                            >
+                                Terminal
                             </button>
                         </div>
                     </div>
@@ -239,7 +311,7 @@ const GlobalAssistant: React.FC = () => {
                                     onKeyDown={(e) => e.key === 'Enter' && handleSend(inputValue)}
                                 />
                                 <button 
-                                    onClick={() => { setMode('voice'); setState('listening'); startListening(); }}
+                                    onClick={() => { setMode('voice'); setContinuousMode(true); setState('listening'); startListening(); }}
                                     className={`p-2 rounded border ${isListening ? 'bg-red-500/20 border-red-500 text-red-500' : 'bg-black border-gray-700 text-gray-400 hover:text-white'}`}
                                 >
                                     <MicrophoneIcon className="w-4 h-4" />

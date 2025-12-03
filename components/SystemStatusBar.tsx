@@ -23,16 +23,11 @@ const SystemStatusBar: React.FC = () => {
             setIsFullscreen(getIsFs());
         };
         
-        // Standard
         document.addEventListener('fullscreenchange', handleFsChange);
-        // Webkit (Chrome, Safari, Opera)
         document.addEventListener('webkitfullscreenchange', handleFsChange);
-        // Mozilla (Firefox)
         document.addEventListener('mozfullscreenchange', handleFsChange);
-        // IE/Edge
         document.addEventListener('MSFullscreenChange', handleFsChange);
 
-        // Initial check
         setIsFullscreen(getIsFs());
 
         return () => {
@@ -47,106 +42,67 @@ const SystemStatusBar: React.FC = () => {
     const toggleFullscreen = () => {
         const doc = document as any;
         const docEl = document.documentElement as any;
+        const requestFullScreen = docEl.requestFullscreen || docEl.webkitRequestFullscreen;
+        const cancelFullScreen = doc.exitFullscreen || doc.webkitExitFullscreen;
 
-        const requestFullScreen = docEl.requestFullscreen || 
-                                  docEl.mozRequestFullScreen || 
-                                  docEl.webkitRequestFullscreen || 
-                                  docEl.webkitRequestFullScreen || 
-                                  docEl.msRequestFullscreen;
-        
-        const cancelFullScreen = doc.exitFullscreen || 
-                                 doc.mozCancelFullScreen || 
-                                 doc.webkitExitFullscreen || 
-                                 doc.msExitFullscreen;
-
-        const isFs = !!(doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement);
-
-        if (!isFs) {
-            if (requestFullScreen) {
-                // Using .call to ensure context is correct
-                requestFullScreen.call(docEl).catch((err: any) => {
-                    console.warn("Fullscreen request failed:", err);
-                });
-            } else {
-                console.warn("Fullscreen API not supported on this device/browser.");
-            }
+        if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
+            requestFullScreen?.call(docEl);
         } else {
-            if (cancelFullScreen) {
-                cancelFullScreen.call(doc).catch((err: any) => {
-                    console.warn("Fullscreen exit failed:", err);
-                });
-            }
+            cancelFullScreen?.call(doc);
         }
     };
 
-    // Format time HH:MM:SS
-    const timeString = time.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
-    const dateString = time.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const timeString = time.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const dateString = time.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: '2-digit' }).toUpperCase();
 
-    const getConnColor = () => {
-        switch (obdState) {
-            case ObdConnectionState.Connected: return 'bg-green-500 shadow-[0_0_8px_#22c55e]';
-            case ObdConnectionState.Connecting:
-            case ObdConnectionState.Initializing: return 'bg-brand-yellow animate-pulse';
-            case ObdConnectionState.Error: return 'bg-red-500';
-            default: return 'bg-gray-600';
-        }
-    };
+    const StatusIndicator: React.FC<{ label: string; active: boolean; color?: string }> = ({ label, active, color = 'bg-green-500' }) => (
+        <div className="flex items-center gap-2 px-3 border-r border-[#1F1F1F] h-full">
+            <span className={`text-[10px] font-mono font-bold tracking-widest ${active ? 'text-gray-200' : 'text-gray-600'}`}>{label}</span>
+            <div className={`w-1.5 h-1.5 rounded-sm ${active ? color : 'bg-[#222]'}`}></div>
+        </div>
+    );
 
     return (
-        <div className="h-8 bg-[#050505] border-b border-[#1F1F1F] flex items-center justify-between px-4 z-50 select-none shadow-lg">
-            {/* Left: System Identity */}
-            <div className="flex items-center gap-4">
-                <span className="text-[10px] font-display font-bold text-gray-400 tracking-widest uppercase hover:text-brand-cyan transition-colors cursor-default">
-                    GENESIS OS <span className="text-[9px] text-gray-600 ml-1">v3.2.1</span>
-                </span>
+        <div className="h-10 bg-[#080808] border-b border-[#1F1F1F] flex items-center justify-between z-50 select-none">
+            {/* Left: System Stats */}
+            <div className="flex h-full items-center">
+                <div className="px-4 border-r border-[#1F1F1F] h-full flex items-center bg-[#020202]">
+                    <span className="text-[10px] font-bold text-brand-cyan tracking-[0.2em]">KC//OS</span>
+                </div>
+                <StatusIndicator label="ECU" active={obdState === ObdConnectionState.Connected} />
+                <StatusIndicator label="GPS" active={ekfStats.gpsActive} />
+                <StatusIndicator label="VIS" active={ekfStats.visionConfidence > 0.3} color="bg-brand-cyan" />
                 
-                {/* AI Status */}
-                <button onClick={() => setIsOpen(true)} className="flex items-center gap-2 px-2 border-l border-[#1F1F1F] hover:bg-white/5 transition-colors">
-                    <div className={`w-2 h-2 rounded-full ${aiState === 'idle' ? 'bg-brand-cyan' : 'bg-brand-purple animate-pulse'}`}></div>
-                    <span className="text-[9px] font-bold text-gray-400 uppercase">AI: {aiState.toUpperCase()}</span>
+                {/* AI Trigger */}
+                <button 
+                    onClick={() => setIsOpen(true)} 
+                    className="flex items-center gap-2 px-4 h-full hover:bg-[#111] transition-colors border-r border-[#1F1F1F]"
+                >
+                    <span className={`text-[10px] font-mono font-bold ${aiState !== 'idle' ? 'text-brand-purple animate-pulse' : 'text-gray-500'}`}>
+                        AI_CORE:{aiState.toUpperCase()}
+                    </span>
                 </button>
             </div>
 
             {/* Center: Clock */}
-            <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
-                <span className="text-[10px] font-mono text-gray-500 uppercase hidden md:inline">{dateString}</span>
-                <span className="text-xs font-mono font-bold text-white tracking-widest">{timeString}</span>
+            <div className="hidden md:flex items-center gap-3">
+                <span className="text-[10px] font-mono text-gray-500">{dateString}</span>
+                <span className="text-sm font-mono font-bold text-white tracking-widest bg-[#111] px-2 py-0.5 rounded-sm border border-[#222]">{timeString}</span>
             </div>
 
-            {/* Right: Hardware Status */}
-            <div className="flex items-center gap-4">
-                 {/* GPS Status */}
-                <div className="flex items-center gap-1.5" title="GPS / GNSS Status">
-                    <span className={`text-[9px] font-bold tracking-wider ${ekfStats.gpsActive ? 'text-gray-300' : 'text-gray-600'}`}>GPS</span>
-                    <div className={`w-1.5 h-1.5 rounded-full ${ekfStats.gpsActive ? 'bg-green-500 shadow-[0_0_5px_#22c55e]' : 'bg-gray-700'}`}></div>
+            {/* Right: Tools */}
+            <div className="flex h-full items-center">
+                <div className="px-4 h-full flex items-center gap-2 border-l border-[#1F1F1F]">
+                    <div className="text-[9px] text-gray-600 font-mono text-right leading-tight">
+                        <div>MEM: 64TB</div>
+                        <div>NET: SECURE</div>
+                    </div>
                 </div>
-
-                 {/* Vision Status */}
-                <div className="flex items-center gap-1.5" title="Computer Vision Status">
-                     <span className={`text-[9px] font-bold tracking-wider ${ekfStats.visionConfidence > 0.3 ? 'text-gray-300' : 'text-gray-600'}`}>VIS</span>
-                     <div className={`w-1.5 h-1.5 rounded-full ${ekfStats.visionConfidence > 0.3 ? 'bg-brand-cyan shadow-[0_0_5px_#00F0FF]' : 'bg-gray-700'}`}></div>
-                </div>
-
-                {/* OBD/ECU Status */}
-                <div className="flex items-center gap-1.5 border-l border-[#1F1F1F] pl-4" title="ECU Uplink Status">
-                    <span className={`text-[9px] font-bold tracking-wider ${obdState === ObdConnectionState.Connected ? 'text-gray-300' : 'text-gray-600'}`}>ECU</span>
-                    <div className={`w-1.5 h-1.5 rounded-full ${getConnColor()}`}></div>
-                </div>
-
-                {/* Cloud Status */}
-                <div className="flex items-center gap-1.5">
-                    <svg className="w-3 h-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" /></svg>
-                </div>
-
-                {/* Fullscreen Toggle */}
                 <button 
-                    type="button"
                     onClick={toggleFullscreen}
-                    className="ml-2 p-1 hover:bg-white/10 rounded transition-colors text-gray-500 hover:text-brand-cyan group"
-                    title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+                    className="w-10 h-full flex items-center justify-center hover:bg-[#111] border-l border-[#1F1F1F] text-gray-500 hover:text-white"
                 >
-                    <FullScreenIcon className="w-4 h-4 transition-transform group-hover:scale-110" isFullscreen={isFullscreen} />
+                    <FullScreenIcon className="w-4 h-4" isFullscreen={isFullscreen} />
                 </button>
             </div>
         </div>

@@ -1,6 +1,6 @@
 {
-  "name": "Copy of Copy of CartelWorx",
-  "description": "A.I first race dash and telemetry ",
+  "name": "CartelWorx Comp",
+  "description": "Production ready functional prototype ",
   "requestFramePermissions": [
     "microphone",
     "geolocation",

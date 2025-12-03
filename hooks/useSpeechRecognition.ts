@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 // @ts-ignore
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -64,7 +64,7 @@ export const useSpeechRecognition = (onResult: (transcript: string) => void) => 
     };
   }, []); // Empty dependency array ensures we only create the recognition instance once
 
-  const startListening = () => {
+  const startListening = useCallback(() => {
     if (recognitionRef.current && !isListening) {
       try {
         recognitionRef.current.start();
@@ -72,19 +72,19 @@ export const useSpeechRecognition = (onResult: (transcript: string) => void) => 
         console.debug("Start listening called while already active or initializing.");
       }
     }
-  };
+  }, [isListening]);
 
-  const stopListening = () => {
+  const stopListening = useCallback(() => {
     if (recognitionRef.current && isListening) {
       recognitionRef.current.stop();
     }
-  };
+  }, [isListening]);
 
-  return {
+  return useMemo(() => ({
     isListening,
     transcript,
     startListening,
     stopListening,
     hasSupport: !!SpeechRecognition
-  };
+  }), [isListening, transcript, startListening, stopListening]);
 };

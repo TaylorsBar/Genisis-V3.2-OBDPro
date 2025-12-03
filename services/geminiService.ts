@@ -94,37 +94,56 @@ export const processVoiceCommand = async (
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
             contents: `
-                User is driving/operating the vehicle. 
-                Current Route: ${currentRoute}
+                You are KC, the vehicle's AI Voice OS.
                 
-                Live Telemetry:
-                Speed: ${vehicleData.speed.toFixed(0)} km/h, RPM: ${vehicleData.rpm.toFixed(0)}, Temp: ${vehicleData.engineTemp.toFixed(0)}C.
+                **Context**: 
+                - Route: ${currentRoute}
+                - Speed: ${vehicleData.speed.toFixed(0)} km/h
+                - RPM: ${vehicleData.rpm.toFixed(0)}
+                - Temp: ${vehicleData.engineTemp.toFixed(0)}C
+                - Fuel: ${vehicleData.fuelLevel.toFixed(0)}%
+                - Boost: ${vehicleData.turboBoost.toFixed(1)} bar
 
-                User Command: "${userMessage}"
-
-                Task:
-                1. Determine if the user wants to navigate to a specific screen.
-                2. Generate a concise, cool response (max 1 sentence) for the TTS engine.
+                **Available App Functions**:
+                - "start_scan": Runs full diagnostic scan (DTCs).
+                - "clear_codes": Clears OBD-II fault codes.
+                - "prime_fuel": Activates fuel pump priming sequence.
+                - "start_dyno": Begins dyno logging.
+                - "stop_dyno": Ends dyno logging.
+                - "connect_obd": Initializes OBD bluetooth.
                 
-                Route Map:
-                - Dashboard/Cockpit -> '/'
-                - Tuning/Dyno/Maps -> '/tuning'
-                - Diagnostics/Codes -> '/diagnostics'
-                - Maintenance/Logs -> '/logbook'
-                - Race/Telemetry/Track -> '/race-pack'
-                - AI Core/Prediction -> '/ai-engine'
-                - AR/Vision/Camera -> '/ar-assistant'
-                - Security -> '/security'
-                - Settings/Appearance -> '/appearance'
+                **Routes**:
+                - Cockpit: '/'
+                - Tuning: '/tuning'
+                - Diagnostics: '/diagnostics'
+                - Logs: '/logbook'
+                - Race: '/race-pack'
+                - AI: '/ai-engine'
+                - AR: '/ar-assistant'
+                - Security: '/security'
+                - Config: '/appearance'
+
+                **Instructions**:
+                1. Analyze User Command: "${userMessage}"
+                2. Determine Action: 
+                   - NAVIGATE: Go to a screen.
+                   - EXECUTE_FUNCTION: Run a specific tool.
+                   - NONE: Just answer a question.
+                3. Speech: Concise, technical response (max 15 words). 
+                
+                **Examples**:
+                - User: "Go to diagnostics." -> Action: NAVIGATE, Target: "/diagnostics", Speech: "Loading diagnostic suite."
+                - User: "Scan for faults." -> Action: EXECUTE_FUNCTION, Target: "start_scan", Speech: "Initiating full system scan."
+                - User: "Engine temp?" -> Action: NONE, Target: null, Speech: "Coolant is ${vehicleData.engineTemp.toFixed(0)} degrees. Nominal."
             `,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
                     type: Type.OBJECT,
                     properties: {
-                        speech: { type: Type.STRING, description: "Concise spoken response" },
-                        action: { type: Type.STRING, enum: ["NAVIGATE", "NONE"], description: "Action to take" },
-                        target: { type: Type.STRING, description: "Target route if action is NAVIGATE, else null" }
+                        speech: { type: Type.STRING, description: "Spoken response" },
+                        action: { type: Type.STRING, enum: ["NAVIGATE", "EXECUTE_FUNCTION", "NONE"], description: "Action type" },
+                        target: { type: Type.STRING, description: "Route path or function name" }
                     },
                     required: ["speech", "action"]
                 }
@@ -138,7 +157,7 @@ export const processVoiceCommand = async (
     } catch (error) {
         console.error("Voice Command Error:", error);
         return {
-            speech: "Command processor offline.",
+            speech: "Voice command processor offline.",
             action: "NONE",
             target: null
         };

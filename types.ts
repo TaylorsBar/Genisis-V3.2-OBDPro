@@ -194,7 +194,7 @@ export interface CoPilotAction {
 // New: Structured Voice Response from Gemini
 export interface VoiceActionResponse {
     speech: string;
-    action: 'NAVIGATE' | 'NONE';
+    action: 'NAVIGATE' | 'EXECUTE_FUNCTION' | 'NONE';
     target: string | null;
 }
 

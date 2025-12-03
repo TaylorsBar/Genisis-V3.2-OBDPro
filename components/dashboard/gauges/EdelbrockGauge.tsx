@@ -1,6 +1,5 @@
 
 import React from 'react';
-import { useAnimatedValue } from '../../hooks/useAnimatedValue';
 
 interface EdelbrockGaugeProps {
   label: string;
@@ -12,13 +11,11 @@ interface EdelbrockGaugeProps {
 }
 
 const EdelbrockGauge: React.FC<EdelbrockGaugeProps> = ({ label, value, unit, min, max, size = 'normal' }) => {
-  const animatedValue = useAnimatedValue(value);
-  
   const isLarge = size === 'large';
   const ANGLE_MIN = -135;
   const ANGLE_MAX = 135;
   const range = max - min;
-  const valueRatio = (Math.max(min, Math.min(animatedValue, max)) - min) / range;
+  const valueRatio = (Math.max(min, Math.min(value, max)) - min) / range;
   const angle = ANGLE_MIN + valueRatio * (ANGLE_MAX - ANGLE_MIN);
 
   const numTicks = isLarge ? 9 : 7;
@@ -75,12 +72,19 @@ const EdelbrockGauge: React.FC<EdelbrockGaugeProps> = ({ label, value, unit, min
 
         {/* Digital Readout */}
         <text x="100" y={isLarge ? "145" : "135"} textAnchor="middle" fill="var(--theme-gauge-text)" fontSize={isLarge ? "40" : "30"} className="font-display font-bold">
-            {animatedValue.toFixed(0)}
+            {value.toFixed(0)}
         </text>
         <text x="100" y={isLarge ? "165" : "150"} textAnchor="middle" fill="var(--theme-text-secondary)" fontSize="12" className="font-sans uppercase">{unit}</text>
 
         {/* Needle */}
-        <g transform={`rotate(${angle} 100 100)`} style={{ transition: 'transform 0.1s ease-out' }}>
+        <g 
+            style={{ 
+                transform: `rotate(${angle}deg)`, 
+                transformOrigin: "100px 100px", 
+                transition: "transform 0.1s ease-out", 
+                willChange: "transform" 
+            }}
+        >
             <path d="M 100 110 L 100 20" stroke="var(--theme-needle-color)" strokeWidth="3" strokeLinecap="round" />
             <circle cx="100" cy="100" r="8" fill="url(#capGrad)" stroke="#333" strokeWidth="1" />
         </g>

@@ -16,6 +16,7 @@ interface AIStore {
     state: AIState;
     messages: Message[];
     currentContext: string; // e.g., "Tuning Page - Fuel Map VE1"
+    continuousMode: boolean; // Hands-free auto-listen loop
     
     // Actions
     setIsOpen: (open: boolean) => void;
@@ -23,6 +24,7 @@ interface AIStore {
     setState: (state: AIState) => void;
     addMessage: (role: 'user' | 'model' | 'system', text: string) => void;
     setContext: (context: string) => void;
+    setContinuousMode: (active: boolean) => void;
     clearHistory: () => void;
 }
 
@@ -39,10 +41,12 @@ export const useAIStore = create<AIStore>((set) => ({
         }
     ],
     currentContext: 'Dashboard',
+    continuousMode: false,
 
     setIsOpen: (isOpen) => set({ isOpen }),
     setMode: (mode) => set({ mode }),
     setState: (state) => set({ state }),
+    setContinuousMode: (continuousMode) => set({ continuousMode }),
     
     addMessage: (role, text) => set((state) => ({
         messages: [
