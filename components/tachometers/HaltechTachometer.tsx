@@ -1,6 +1,5 @@
 
 import React, { useMemo } from 'react';
-import { useAnimatedValue } from '../../hooks/useAnimatedValue';
 
 interface HaltechTachometerProps {
   rpm: number;
@@ -17,30 +16,35 @@ const HaltechTachometer: React.FC<HaltechTachometerProps> = ({
     redline = 7500,
     maxRpm = 9000 
 }) => {
-  const animatedRpm = useAnimatedValue(rpm);
-  
-  const startAngle = 135;
-  const endAngle = 405;
-  const totalAngle = endAngle - startAngle;
+  // CONFIGURATION
   const radius = 160;
   const cx = 200;
   const cy = 200;
   const strokeWidth = 28;
-
-  const rpmRatio = Math.min(1, Math.max(0, animatedRpm / maxRpm));
+  
+  // Angle Geometry
+  const startAngle = 135;
+  const endAngle = 405;
+  const totalAngle = endAngle - startAngle;
+  
+  // Calculate Ratios
+  const rpmRatio = Math.min(1, Math.max(0, rpm / maxRpm));
   const currentAngle = startAngle + (rpmRatio * totalAngle);
   
-  const shiftLightThresholds = [
-      redline * 0.50,
-      redline * 0.65,
-      redline * 0.80,
-      redline * 0.90,
-      redline * 0.98
-  ];
+  // Circle Geometry for DashArray Trick
+  // We use a circle rotated to start at 'startAngle'.
+  // SVG Circles start at 3 o'clock (0 deg).
+  // We want to draw a segment of length 'totalAngle'.
+  const circumference = 2 * Math.PI * radius;
+  // The visible portion of the gauge (270 degrees usually)
+  const visibleCircumference = circumference * (totalAngle / 360);
   
-  const activeShiftLights = shiftLightThresholds.filter(t => animatedRpm >= t).length;
-  const isRedlineFlash = animatedRpm >= redline;
+  // The strokeDashoffset determines how much is "hidden". 
+  // We start fully hidden (offset = visibleCircumference) and reduce offset to show bar.
+  const dashOffset = visibleCircumference * (1 - rpmRatio);
+  const fullDashArray = `${visibleCircumference} ${circumference}`; // Visible part, then gap
 
+  // Helper for Ticks (Static)
   const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
     const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
     return {
@@ -49,30 +53,19 @@ const HaltechTachometer: React.FC<HaltechTachometerProps> = ({
     };
   }
 
-  const describeArc = (x: number, y: number, radius: number, startAngle: number, endAngle: number) => {
-      const start = polarToCartesian(x, y, radius, endAngle);
-      const end = polarToCartesian(x, y, radius, startAngle);
-      const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
-      return [
-          "M", start.x, start.y, 
-          "A", radius, radius, 0, largeArcFlag, 0, end.x, end.y
-      ].join(" ");
-  }
-
-  const ticks = useMemo(() => {
-      return Array.from({length: 10}).map((_, i) => {
+  // Memoize static elements (Ticks, Backgrounds) so they don't recalc on render
+  const staticElements = useMemo(() => {
+      const tickElements = Array.from({length: 10}).map((_, i) => {
           const val = i * 1000;
           const angle = startAngle + (val / maxRpm) * totalAngle;
           const p1 = polarToCartesian(cx, cy, radius - strokeWidth/2 - 2, angle);
           const p2 = polarToCartesian(cx, cy, radius - strokeWidth/2 - 12, angle);
           const labelPos = polarToCartesian(cx, cy, radius - 55, angle);
           
-          const showLabel = i !== 0;
-
           return (
               <g key={i}>
                   <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="white" strokeWidth="3" />
-                  {showLabel && (
+                  {i !== 0 && (
                       <text 
                           x={labelPos.x} 
                           y={labelPos.y} 
@@ -87,126 +80,95 @@ const HaltechTachometer: React.FC<HaltechTachometerProps> = ({
               </g>
           );
       });
-  }, [maxRpm, startAngle, totalAngle, radius, cx, cy, strokeWidth]);
 
-  const gradientId = "rpmGradient";
+      return (
+          <>
+             {/* Main Gauge Body Background */}
+             <circle cx={cx} cy={cy} r={radius + 15} fill="url(#haltechBezel)" stroke="#000" strokeWidth="2" />
+             <circle cx={cx} cy={cy} r={radius + 10} fill="#050505" />
+             <circle cx={cx} cy={cy} r={radius + 10} filter="url(#noise)" />
+             
+             {/* Background Track */}
+             <circle 
+                cx={cx} cy={cy} r={radius} 
+                fill="none" 
+                stroke="#151515" 
+                strokeWidth={strokeWidth}
+                strokeDasharray={fullDashArray}
+                transform={`rotate(${startAngle} ${cx} ${cy})`}
+                strokeLinecap="butt"
+             />
+             
+             {/* Ticks */}
+             {tickElements}
+             
+             {/* Labels */}
+             <text x={cx} y={cy - 55} textAnchor="middle" fill="#666" className="font-mono font-bold text-xs tracking-[0.3em]">GEAR</text>
+             <text x={cx - 90} y={cy + 30} textAnchor="middle" fill="#888" className="font-mono text-[10px]">RPM</text>
+          </>
+      )
+  }, [maxRpm, startAngle, totalAngle, radius, cx, cy, strokeWidth, fullDashArray]);
 
   return (
     <div className="relative w-full h-full flex items-center justify-center select-none">
         <svg viewBox="0 0 400 400" className="w-full h-full filter drop-shadow-2xl" preserveAspectRatio="xMidYMid meet">
             <defs>
-                {/* Dynamic Gradient using CSS Variables */}
-                <linearGradient id={gradientId} x1="0%" y1="100%" x2="100%" y2="0%">
+                <linearGradient id="rpmGradient" x1="0%" y1="100%" x2="100%" y2="0%">
                     <stop offset="0%" stopColor="var(--theme-dim)" />
                     <stop offset="60%" stopColor="var(--theme-color)" />
                     <stop offset="90%" stopColor="#FFFF00" />
                     <stop offset="100%" stopColor="#FF0000" />
                 </linearGradient>
-                
-                {/* Brushed Metal Bezel Gradient */}
                 <linearGradient id="haltechBezel" x1="0%" y1="0%" x2="100%" y2="100%">
                     <stop offset="0%" stopColor="#333" />
-                    <stop offset="25%" stopColor="#555" />
-                    <stop offset="50%" stopColor="#222" />
-                    <stop offset="75%" stopColor="#444" />
                     <stop offset="100%" stopColor="#111" />
                 </linearGradient>
-
-                {/* Noise Texture for Face */}
                 <filter id="noise">
                     <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch"/>
                     <feColorMatrix type="saturate" values="0"/>
-                    <feComponentTransfer>
-                        <feFuncA type="linear" slope="0.05"/>
-                    </feComponentTransfer>
+                    <feComponentTransfer><feFuncA type="linear" slope="0.05"/></feComponentTransfer>
                 </filter>
-                
                 <filter id="glow">
                     <feGaussianBlur stdDeviation="3.5" result="coloredBlur"/>
-                    <feMerge>
-                        <feMergeNode in="coloredBlur"/>
-                        <feMergeNode in="SourceGraphic"/>
-                    </feMerge>
-                </filter>
-                
-                <filter id="ledGlow">
-                    <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-                    <feMerge>
-                        <feMergeNode in="coloredBlur"/>
-                        <feMergeNode in="SourceGraphic"/>
-                    </feMerge>
-                </filter>
-
-                <filter id="needleShadow" x="-50%" y="-50%" width="200%" height="200%">
-                    <feDropShadow dx="2" dy="4" stdDeviation="3" floodColor="black" floodOpacity="0.6" />
+                    <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
                 </filter>
             </defs>
 
-            {/* --- Shift Lights --- */}
-            <g transform="translate(200, 50)">
-                {[-2, -1, 0, 1, 2].map((offset, i) => {
-                    const isActive = activeShiftLights > i;
-                    // Progressive Colors
-                    const colors = ['var(--theme-color)', 'var(--theme-color)', '#FFFF00', '#FF0000', '#FF0000'];
-                    const baseColor = colors[i];
-                    const isFlashing = isRedlineFlash && i === 4;
-                    const color = isActive ? baseColor : '#1a1a1a';
-                    
-                    return (
-                        <circle 
-                            key={i}
-                            cx={offset * 25} 
-                            cy={Math.abs(offset) * 5}
-                            r={8} 
-                            fill={color} 
-                            stroke="#000" 
-                            strokeWidth="2"
-                            filter={isActive ? "url(#ledGlow)" : ""}
-                            className={isFlashing ? "animate-pulse" : ""}
-                        />
-                    )
-                })}
-            </g>
+            {staticElements}
 
-            {/* --- Main Gauge Body --- */}
-            <circle cx={cx} cy={cy} r={radius + 15} fill="url(#haltechBezel)" stroke="#000" strokeWidth="2" />
-            <circle cx={cx} cy={cy} r={radius + 10} fill="#050505" />
-            <circle cx={cx} cy={cy} r={radius + 10} filter="url(#noise)" />
-
-            {/* --- Main Gauge Arc --- */}
-            <path 
-                d={describeArc(cx, cy, radius, startAngle, endAngle)} 
+            {/* --- Dynamic RPM Bar (CSS Animated) --- */}
+            {/* We rotate the circle so its start point matches gauge start. We dash-array it to only show the segment. */}
+            <circle 
+                cx={cx} cy={cy} r={radius} 
                 fill="none" 
-                stroke="#151515" 
+                stroke="url(#rpmGradient)" 
                 strokeWidth={strokeWidth}
-                strokeLinecap="round"
-            />
-
-            <path 
-                d={describeArc(cx, cy, radius, startAngle, currentAngle)} 
-                fill="none" 
-                stroke={`url(#${gradientId})`} 
-                strokeWidth={strokeWidth}
-                strokeLinecap="round"
+                strokeLinecap="butt"
+                strokeDasharray={fullDashArray}
+                strokeDashoffset={dashOffset}
+                transform={`rotate(${startAngle} ${cx} ${cy})`}
                 filter="url(#glow)"
-                style={{ transition: 'd 0.1s linear' }}
+                style={{ transition: 'stroke-dashoffset 0.1s linear' }} 
             />
 
-            {/* White Tip/Needle Indicator on Bar */}
-            {rpmRatio > 0.01 && (
-                <g transform={`rotate(${currentAngle + 90} ${cx} ${cy})`} style={{ transition: 'transform 0.1s linear' }}>
-                    <rect 
-                        x={cx - 2} 
-                        y={cy - radius - strokeWidth/2 - 4} 
-                        width={4} 
-                        height={strokeWidth + 8} 
-                        fill="white" 
-                        filter="url(#glow)"
-                    />
-                </g>
-            )}
-
-            {ticks}
+            {/* --- Needle (CSS Animated) --- */}
+            {/* The needle is a group rotated around center. We subtract 90 because 0deg is 3 o'clock, we want 12 o'clock relative? No, simpler to just match angles. */}
+            <g 
+                style={{ 
+                    transformOrigin: `${cx}px ${cy}px`, 
+                    transform: `rotate(${currentAngle + 90}deg)`,
+                    transition: 'transform 0.1s linear' 
+                }}
+            >
+                <rect 
+                    x={cx - 2} 
+                    y={cy - radius - strokeWidth/2 - 4} 
+                    width={4} 
+                    height={strokeWidth + 8} 
+                    fill="white" 
+                    filter="url(#glow)"
+                />
+            </g>
 
             {/* --- Central Data --- */}
             <text 
@@ -221,9 +183,7 @@ const HaltechTachometer: React.FC<HaltechTachometerProps> = ({
                 {gear === 0 ? 'N' : gear}
             </text>
             
-            <text x={cx} y={cy - 55} textAnchor="middle" fill="#666" className="font-mono font-bold text-xs tracking-[0.3em]">GEAR</text>
-
-            {/* Speed */}
+            {/* Speed Box */}
             <g transform={`translate(${cx}, ${cy + 90})`}>
                 <rect x="-60" y="-25" width="120" height="50" fill="#111" rx="4" stroke="#333" strokeWidth="1.5" />
                 <text x="0" y="5" textAnchor="middle" fill="white" className="font-mono font-bold text-3xl">
@@ -234,12 +194,15 @@ const HaltechTachometer: React.FC<HaltechTachometerProps> = ({
                 </text>
             </g>
 
-            <text x={cx - 90} y={cy + 30} textAnchor="middle" fill="#888" className="font-mono text-[10px]">RPM</text>
             <text x={cx - 90} y={cy + 45} textAnchor="middle" fill="white" className="font-mono font-bold text-xl">{rpm.toFixed(0)}</text>
 
-            {isRedlineFlash && (
-                <circle cx={cx} cy={cy} r={radius + 20} fill="rgba(255, 0, 0, 0.1)" className="animate-pulse pointer-events-none" />
-            )}
+            {/* Redline Flash Overlay */}
+            <circle 
+                cx={cx} cy={cy} r={radius + 20} 
+                fill="rgba(255, 0, 0, 0.2)" 
+                className="pointer-events-none"
+                style={{ opacity: rpm >= redline ? 1 : 0, transition: 'opacity 0.1s' }}
+            />
 
         </svg>
     </div>
