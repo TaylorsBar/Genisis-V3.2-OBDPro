@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ComposedChart, Line } from 'recharts';
+import { ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, ComposedChart, Line, Area, Legend } from 'recharts';
 import { DynoRun, DynoPoint } from '../../types';
 
 interface DynoGraphProps {
@@ -12,13 +12,14 @@ interface DynoGraphProps {
 const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
         return (
-            <div className="bg-black/90 border border-gray-700 p-3 rounded shadow-xl font-mono text-xs">
-                <div className="font-bold text-gray-400 mb-2 border-b border-gray-800 pb-1">{Number(label).toFixed(0)} RPM</div>
+            <div className="bg-[#050505]/95 border border-white/10 backdrop-blur-xl p-4 rounded-lg shadow-xl font-mono text-xs z-50">
+                <div className="font-bold text-gray-400 mb-2 border-b border-white/10 pb-1">
+                    {Number(label).toFixed(0)} RPM
+                </div>
                 {payload.map((p: any, i: number) => (
-                    <div key={i} className="flex items-center gap-2 mb-1">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }}></div>
-                        <span className="text-gray-300 w-16">{p.name}:</span>
-                        <span className="text-white font-bold">{Number(p.value).toFixed(1)}</span>
+                    <div key={i} className="flex justify-between gap-4">
+                        <span style={{ color: p.color }}>{p.name}:</span>
+                        <span className="text-white font-bold">{Number(p.value).toFixed(2)}</span>
                     </div>
                 ))}
             </div>
@@ -28,145 +29,143 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 const DynoGraph: React.FC<DynoGraphProps> = ({ runs, currentRunData, isRunning }) => {
-    // 1. Prepare Data
-    // To allow multiple lines on one X-axis, we ideally need a normalized X-axis (RPM)
-    // We create a base bucket set (e.g. 100 RPM increments) and map run data to it.
+    // We need a unified X-axis. Let's create buckets from 2000 to 8000
+    const allDataPoints: any[] = [];
     
-    const bucketSize = 100;
-    const maxRpm = 8500;
-    
-    // Create buckets
-    const plotData = Array.from({ length: maxRpm / bucketSize }, (_, i) => {
-        const rpm = i * bucketSize;
+    // Sort runs to find overall peak
+    const activeRuns = runs.filter(r => r.isVisible);
+    const overallPeak = Math.max(...activeRuns.map(r => r.peakPower), isRunning && currentRunData && currentRunData.length ? Math.max(...currentRunData.map(d => d.power)) : 0);
+
+    for(let rpm = 2000; rpm <= 8500; rpm += 100) {
         const point: any = { rpm };
         
-        // Map Saved Runs
-        runs.filter(r => r.isVisible).forEach(run => {
-            const match = run.data.find(d => Math.abs(d.rpm - rpm) < bucketSize / 2);
+        activeRuns.forEach(run => {
+            const match = run.data.find(d => Math.abs(d.rpm - rpm) < 60); 
             if (match) {
-                point[`${run.id}_power`] = match.power;
-                point[`${run.id}_torque`] = match.torque;
+                point[`${run.id}_p`] = match.power;
+                point[`${run.id}_t`] = match.torque;
+                point[`${run.id}_afr`] = match.afr;
+                point[`${run.id}_boost`] = match.boost;
             }
         });
 
-        // Map Live Run
         if (isRunning && currentRunData) {
-            const match = currentRunData.find(d => Math.abs(d.rpm - rpm) < bucketSize / 2);
+            const match = currentRunData.find(d => Math.abs(d.rpm - rpm) < 60);
             if (match) {
-                point['live_power'] = match.power;
-                point['live_torque'] = match.torque;
+                point['live_p'] = match.power;
+                point['live_t'] = match.torque;
+                point['live_afr'] = match.afr;
+                point['live_boost'] = match.boost;
             }
         }
-        
-        return point;
-    });
+        allDataPoints.push(point);
+    }
 
     return (
-        <div className="w-full h-full relative bg-[#080808] rounded-lg border border-white/10 overflow-hidden">
-             {/* Grid Overlay for aesthetics */}
-             <div className="absolute inset-0 pointer-events-none opacity-5 bg-[linear-gradient(0deg,transparent_24%,rgba(255,255,255,.3)_25%,rgba(255,255,255,.3)_26%,transparent_27%,transparent_74%,rgba(255,255,255,.3)_75%,rgba(255,255,255,.3)_76%,transparent_77%,transparent),linear-gradient(90deg,transparent_24%,rgba(255,255,255,.3)_25%,rgba(255,255,255,.3)_26%,transparent_27%,transparent_74%,rgba(255,255,255,.3)_75%,rgba(255,255,255,.3)_76%,transparent_77%,transparent)] bg-[length:50px_50px]"></div>
-
-             <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={plotData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
+        <div className="w-full h-full bg-[#050505] rounded-xl border border-white/5 flex flex-col overflow-hidden">
+            {/* Industry Grade Stats Header */}
+            <div className="grid grid-cols-4 gap-px bg-white/5 border-b border-white/5">
+                {activeRuns.slice(0, 3).map((run, i) => {
+                    const prevRun = i > 0 ? activeRuns[i - 1] : null;
+                    const hpDelta = prevRun ? run.peakPower - prevRun.peakPower : null;
+                    const tqDelta = prevRun ? run.peakTorque - prevRun.peakTorque : null;
                     
+                    return (
+                        <div key={run.id} className="bg-[#0A0A0A] p-3 border-r border-white/5">
+                            <div className="flex items-center gap-2 mb-1">
+                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: run.color }} />
+                                <span className="text-[9px] text-white/40 uppercase tracking-tighter">{run.name}</span>
+                            </div>
+                            <div className="flex items-baseline gap-2">
+                                <span className="text-xl font-bold font-mono tracking-tighter" style={{ color: run.color }}>{run.peakPower.toFixed(1)}</span>
+                                <span className="text-[10px] text-white/20 uppercase font-mono">WHP</span>
+                                {hpDelta !== null && (
+                                    <span className={`text-[10px] font-bold ${hpDelta >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                        {hpDelta >= 0 ? '+' : ''}{hpDelta.toFixed(1)}
+                                    </span>
+                                )}
+                            </div>
+                            <div className="text-[10px] text-white/40 font-mono italic">
+                                TQ: {run.peakTorque.toFixed(1)} Nm 
+                                {tqDelta !== null && (
+                                    <span className={`ml-1 ${tqDelta >= 0 ? 'text-emerald-500/70' : 'text-red-500/70'}`}>
+                                        ({tqDelta >= 0 ? '+' : ''}{tqDelta.toFixed(1)})
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+                {isRunning && (
+                    <div className="bg-[#0A0A0A] p-3 animate-pulse">
+                        <div className="flex items-center gap-2 mb-1">
+                            <div className="w-2 h-2 rounded-full bg-[#00F0FF]" />
+                            <span className="text-[9px] text-[#00F0FF] uppercase tracking-tighter">LIVE PULL</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-xl font-bold font-mono tracking-tighter text-[#00F0FF]">
+                                {(currentRunData && currentRunData.length > 0 ? Math.max(...currentRunData.map(d => d.power)) : 0).toFixed(1)}
+                            </span>
+                            <span className="text-[10px] text-white/20 uppercase font-mono">WHP</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <div className="flex-1 min-h-[300px] p-4">
+                 <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={allDataPoints} margin={{ top: 20, right: 20, left: 0, bottom: 20 }}>
+                    <defs>
+                        <linearGradient id="livePower" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#00F0FF" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="#00F0FF" stopOpacity={0}/>
+                        </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" vertical={false} />
                     <XAxis 
                         dataKey="rpm" 
                         stroke="#444" 
-                        tick={{fill: '#666', fontSize: 10, fontFamily: 'monospace'}} 
-                        tickLine={false}
-                        axisLine={false}
-                        type="number"
-                        domain={[2000, 8500]}
-                        tickCount={9}
+                        tick={{fill: '#666', fontSize: 10}} 
+                        type="number" 
+                        domain={[2000, 8500]} 
+                        tickCount={7} 
                     />
                     
-                    {/* Power Axis */}
-                    <YAxis 
-                        yAxisId="power" 
-                        orientation="left" 
-                        stroke="#00F0FF" 
-                        tick={{fill: '#00F0FF', fontSize: 10, fontFamily: 'monospace'}} 
-                        tickLine={false}
-                        axisLine={false}
-                        width={40}
-                        domain={[0, 'auto']}
-                        label={{ value: 'POWER (HP)', angle: -90, position: 'insideLeft', fill: '#00F0FF', fontSize: 10, opacity: 0.5 }}
-                    />
+                    {/* Primary Axis: HP */}
+                    <YAxis yAxisId="p" stroke="#00F0FF" tick={{fill: '#00F0FF', fontSize: 10}} domain={[0, 'auto']} width={40} label={{ value: 'HP', angle: -90, position: 'insideLeft', fill:'#00F0FF', fontSize: 10 }} />
                     
-                    {/* Torque Axis */}
-                    <YAxis 
-                        yAxisId="torque" 
-                        orientation="right" 
-                        stroke="#FF3333" 
-                        tick={{fill: '#FF3333', fontSize: 10, fontFamily: 'monospace'}} 
-                        tickLine={false}
-                        axisLine={false}
-                        width={40}
-                        domain={[0, 'auto']}
-                        label={{ value: 'TORQUE (Nm)', angle: 90, position: 'insideRight', fill: '#FF3333', fontSize: 10, opacity: 0.5 }}
-                    />
+                    {/* Secondary Axis: Torque */}
+                    <YAxis yAxisId="t" orientation="right" stroke="#FF003C" tick={{fill: '#FF003C', fontSize: 10}} domain={[0, 'auto']} width={40} label={{ value: 'TQ', angle: 90, position: 'insideRight', fill:'#FF003C', fontSize: 10 }} />
                     
-                    <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.2)' }} />
-                    
-                    {/* Historic Runs */}
+                    {/* Tertiary Axis: AFR (Hidden axis, just for line scaling) */}
+                    <YAxis yAxisId="afr" orientation="right" domain={[8, 18]} hide />
+
+                    {/* Quaternary Axis: Boost (Hidden axis, just for line scaling) */}
+                    <YAxis yAxisId="boost" orientation="right" domain={[0, 3.5]} hide />
+
+                    <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)' }} />
+                    <Legend wrapperStyle={{fontSize: '10px', paddingTop: '10px'}} />
+
                     {runs.filter(r => r.isVisible).map(run => (
                         <React.Fragment key={run.id}>
-                            <Line 
-                                yAxisId="power"
-                                type="monotone" 
-                                dataKey={`${run.id}_power`} 
-                                stroke={run.color} 
-                                strokeWidth={2} 
-                                dot={false}
-                                name={`${run.name} HP`}
-                                strokeOpacity={0.7}
-                                isAnimationActive={false}
-                            />
-                            <Line 
-                                yAxisId="torque"
-                                type="monotone" 
-                                dataKey={`${run.id}_torque`} 
-                                stroke={run.color} 
-                                strokeWidth={1} 
-                                strokeDasharray="4 4"
-                                dot={false}
-                                name={`${run.name} Tq`}
-                                strokeOpacity={0.5}
-                                isAnimationActive={false}
-                            />
+                            <Line connectNulls yAxisId="p" type="monotone" dataKey={`${run.id}_p`} stroke={run.color} strokeWidth={2} dot={false} isAnimationActive={false} name={`Power #${run.id.slice(-2)}`} />
+                            <Line connectNulls yAxisId="t" type="monotone" dataKey={`${run.id}_t`} stroke={run.color} strokeWidth={1} strokeDasharray="3 3" dot={false} isAnimationActive={false} name={`Torque #${run.id.slice(-2)}`} opacity={0.6} />
+                            <Line connectNulls yAxisId="boost" type="monotone" dataKey={`${run.id}_boost`} stroke="#EAB308" strokeWidth={1} strokeDasharray="2 4" dot={false} isAnimationActive={false} opacity={0.4} name="Boost" />
+                            <Line connectNulls yAxisId="afr" type="stepAfter" dataKey={`${run.id}_afr`} stroke="#A855F7" strokeWidth={1} dot={false} isAnimationActive={false} opacity={0.3} name="AFR" />
                         </React.Fragment>
                     ))}
 
-                    {/* Live Run */}
                     {isRunning && (
                         <>
-                            <Line 
-                                yAxisId="power"
-                                type="monotone" 
-                                dataKey="live_power" 
-                                stroke="#FFFFFF" 
-                                strokeWidth={3} 
-                                dot={false}
-                                name="Live Power"
-                                animationDuration={0}
-                            />
-                            <Line 
-                                yAxisId="torque"
-                                type="monotone" 
-                                dataKey="live_torque" 
-                                stroke="#FF0000" 
-                                strokeWidth={2} 
-                                strokeDasharray="5 5"
-                                dot={false}
-                                name="Live Torque"
-                                animationDuration={0}
-                            />
+                            <Area connectNulls yAxisId="p" type="monotone" dataKey="live_p" stroke="#00F0FF" fill="url(#livePower)" strokeWidth={3} dot={false} isAnimationActive={false} name="Live Power" />
+                            <Line connectNulls yAxisId="t" type="monotone" dataKey="live_t" stroke="#FF003C" strokeWidth={3} dot={false} isAnimationActive={false} name="Live Torque" />
+                            <Line connectNulls yAxisId="afr" type="stepAfter" dataKey="live_afr" stroke="#A855F7" strokeWidth={2} dot={false} isAnimationActive={false} name="Live AFR" opacity={0.7} />
+                            <Line connectNulls yAxisId="boost" type="monotone" dataKey="live_boost" stroke="#EAB308" strokeWidth={2} dot={false} isAnimationActive={false} name="Live Boost" opacity={0.8} />
                         </>
                     )}
-
                 </ComposedChart>
             </ResponsiveContainer>
+            </div>
         </div>
     );
 };

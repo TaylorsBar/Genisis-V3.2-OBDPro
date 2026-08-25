@@ -1,0 +1,91 @@
+{
+  "entities": {
+    "TuningProfile": {
+      "title": "TuningProfile",
+      "description": "Custom high-performance engine management maps and profile parameters.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "tuning": { "type": "object" }
+      },
+      "required": ["id", "name", "createdAt"]
+    },
+    "LogSession": {
+      "title": "LogSession",
+      "description": "High-frequency telemetry logging sessions from dyno sweeps or track segments.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "startTime": { "type": "number" },
+        "duration": { "type": "number" },
+        "dataPoints": { "type": "array" },
+        "stats": { "type": "object" }
+      },
+      "required": ["id", "name", "startTime"]
+    },
+    "DynoRun": {
+      "title": "DynoRun",
+      "description": "Virtual or physical chassis dynamometer logs with computed peak HP and torque curves.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "peakHp": { "type": "number" },
+        "peakTorque": { "type": "number" }
+      },
+      "required": ["id", "timestamp", "peakHp", "peakTorque"]
+    },
+    "SystemLog": {
+      "title": "SystemLog",
+      "description": "High-fidelity internal system event, watchdog diagnostic, and security logging.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "level": { "type": "string" },
+        "category": { "type": "string" },
+        "message": { "type": "string" },
+        "details": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "level", "category", "message"]
+    },
+    "LapSession": {
+      "title": "LapSession",
+      "description": "High-fidelity race lap timer sessions with sector splits and delta tracking.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "trackName": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "laps": { "type": "array" },
+        "bestLapTime": { "type": "number" }
+      },
+      "required": ["id", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/profiles/{profileId}": {
+      "schema": "TuningProfile",
+      "description": "Cloud synchronized engine mapping configurations."
+    },
+    "/users/{userId}/logs/{logId}": {
+      "schema": "LogSession",
+      "description": "Engine telemetry logs."
+    },
+    "/users/{userId}/dynoRuns/{runId}": {
+      "schema": "DynoRun",
+      "description": "Saved dynamometer sweeps."
+    },
+    "/users/{userId}/systemLogs/{systemLogId}": {
+      "schema": "SystemLog",
+      "description": "Comprehensive security, diagnostic, and EKF watchdog logging."
+    },
+    "/users/{userId}/lapSessions/{sessionId}": {
+      "schema": "LapSession",
+      "description": "Cloud synchronized lap timing sessions."
+    }
+  }
+}

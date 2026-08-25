@@ -1,4 +1,3 @@
-
 export interface SensorDataPoint {
   time: number;
   rpm: number;
@@ -12,21 +11,22 @@ export interface SensorDataPoint {
   turboBoost: number;
   fuelPressure: number;
   oilPressure: number;
-  // New detailed OBD-II params for AI Engine
+  transmissionTemp?: number;
+  brakeTemp?: number;
+  tireGrip?: number;
   shortTermFuelTrim: number;
   longTermFuelTrim: number;
   o2SensorVoltage: number;
   engineLoad: number;
-  // For Race Pack
   distance: number;
-  gForceX: number; // Lateral G
-  gForceY: number; // Longitudinal G
-  // For GPS
+  gForceX: number;
+  gForceY: number;
+  gForceZ: number;
   latitude: number;
   longitude: number;
-  // Source tracking
-  source?: 'sim' | 'live_obd';
-  // Additional Sensor Data
+  altitude?: number;
+  slope?: number;
+  source?: 'sim' | 'live_obd' | 'gps_fallback' | 'fused_ekf' | 'dma_engine';
   maf: number;
   timingAdvance: number;
   throttlePos: number;
@@ -35,11 +35,154 @@ export interface SensorDataPoint {
   ambientTemp: number;
   fuelRailPressure: number;
   lambda: number;
-  // CAN Data - Wheel Speeds
   wheelSpeedFL: number;
   wheelSpeedFR: number;
   wheelSpeedRL: number;
   wheelSpeedRR: number;
+  knockLevel: number;
+  knockRetard: number;
+  knockCount: number;
+  power?: number;
+  // Comprehensive Engine & ECU
+  vvtIntakeAngle?: number;
+  vvtExhaustAngle?: number;
+  injectorPulseWidth?: number;
+  wastegateDutyCycle?: number;
+  fuelPumpDutyCycle?: number;
+  acceleratorPedalPos?: number;
+  targetIdleRpm?: number;
+  // Drivetrain & Chassis
+  torqueConverterSlip?: number;
+  linePressure?: number;
+  awdTorqueSplit?: number;
+  steeringAngle?: number;
+  yawRate?: number;
+  // Dynamic PIDs
+  customPids?: Record<string, number>;
+  // VQ37VHR Specific
+  vvelPosition?: number;
+  vvelTarget?: number;
+  mafB1?: number;
+  mafB2?: number;
+  throttlePosB1?: number;
+  throttlePosB2?: number;
+  ignTimingB1?: number;
+  ignTimingB2?: number;
+  knockSensor1?: number;
+  knockSensor2?: number;
+  engineOilTemp?: number;
+  transFluidTemp?: number;
+  afSensor1B1?: number;
+  afSensor1B2?: number;
+}
+
+export interface TuningProfile {
+    id: string;
+    name: string;
+    tuning: {
+        veTable: number[][];
+        ignitionTable: number[][];
+        boostTable: number[][];
+        torqueTable: number[][];
+        throttleTable: number[][];
+        tcuTable: number[][];
+        boostTarget: number;
+    };
+    createdAt: number;
+}
+
+export enum ObdConnectionState {
+  Disconnected = 'Disconnected',
+  Connecting = 'Connecting',
+  Initializing = 'Initializing',
+  Connected = 'Connected',
+  Error = 'Error',
+  HardwareHandshake = 'HardwareHandshake',
+  BypassingFirmware = 'BypassingFirmware'
+}
+
+export enum HardwareProtocol {
+  StandardObd = 'StandardObd',
+  KLine_Kess = 'KLine_Kess',
+  CAN_Kess = 'CAN_Kess',
+  J2534_PassThru = 'J2534_PassThru'
+}
+
+export interface HardwareLinkStatus {
+  deviceId: string | null;
+  firmwareVersion: string | null;
+  protocol: HardwareProtocol;
+  isClone: boolean;
+  handshakeComplete: boolean;
+}
+
+export interface PIDDefinition {
+  id: string;
+  name: string;
+  description: string;
+  mode: string;
+  pid: string;
+  bytes: number;
+  formula: (bytes: number[]) => number;
+  unit: string;
+  category: 'Engine' | 'Fuel' | 'Air' | 'Performance' | 'Other' | 'Custom';
+}
+
+export interface CustomDidDefinition {
+    id: string;
+    did: string; // 4 digit hex string
+    name: string;
+    description: string;
+    bytes: number;
+    unit: string;
+    scaling: number;
+    offset: number;
+    signed: boolean;
+}
+
+export interface CanMapping {
+    id: string;
+    canId: string; // Hex string e.g. "1A0"
+    name: string;
+    unit: string;
+    startBit: number;
+    bitLength: number;
+    byteOrder: 'big' | 'little';
+    isSigned: boolean;
+    scaling: number;
+    offset: number;
+}
+
+// --- TIER 1 DMA TYPES ---
+export enum AddrMode {
+    PHYSICAL_PID = 0,
+    DIRECT_MEMORY_16 = 16,
+    DIRECT_MEMORY_24 = 24,
+    DIRECT_MEMORY_32 = 32
+}
+
+export interface MemoryParam {
+    id: string;
+    address: number;
+    sizeBytes: number;
+    isSigned: boolean;
+    scaling: number;
+    offset: number;
+    name: string;
+    units: string;
+}
+
+export type ValidationStatus = 
+    | 'bench_validated'
+    | 'derived_from_public_service_data'
+    | 'community_submitted_unverified';
+
+export interface EcuVariant {
+    osId: string;
+    ecuType: string;
+    securityAlgoId: number;
+    validationStatus: ValidationStatus;
+    memoryMap: Record<string, MemoryParam>;
 }
 
 export enum AlertLevel {
@@ -48,115 +191,217 @@ export enum AlertLevel {
   Critical = 'Critical'
 }
 
-export enum ObdConnectionState {
-  Disconnected = 'Disconnected',
-  Connecting = 'Connecting',
-  Initializing = 'Initializing', // Sending AT commands
-  Connected = 'Connected',
-  Error = 'Error'
+export interface DiagnosticCode {
+    code: string;
+    description?: string;
+    status: 'Confirmed' | 'Pending' | 'Permanent';
+    timestamp: number;
+    freezeFrame?: Partial<SensorDataPoint>;
 }
 
-export interface DiagnosticAlert {
-  id: string;
-  level: AlertLevel;
-  component: string;
-  message: string;
-  timestamp: string;
-  isFaultRelated?: boolean; // New field for Co-Pilot context
+export interface TuningGoal {
+    userIntent: string;
+    platformId?: 'GENERIC' | 'MR20DE' | 'HR16DE' | 'K9K' | 'R9M' | 'M9R' | 'HRA2DDT' | 'MR16DDT' | 'KR15DDT' | 'HR13DDT' | 'VQ37' | 'VQ25' | 'BARRA' | 'BOSCH_MG1';
+    powerIncreaseTarget: number;
+    safetyMarginLevel: number;
+    prioritizeEconomy: boolean;
+    fuelType: '93_OCT' | 'E85' | 'DIESEL'; 
+    targetTable?: TuningTableType;
+    isFactoryBasemapRequest?: boolean;
 }
 
-export interface MaintenanceRecord {
-  id: string;
-  date: string;
-  service: string;
-  notes: string;
-  verified: boolean;
-  isAiRecommendation: boolean;
+export interface GeneratedMapResult {
+    modifiedMapValues: number[][];
+    predictedPowerGain: number;
+    predictedSafetyScore: number;
+    modificationsLog: string[];
 }
 
-export interface ChatMessage {
-  id: string;
-  text: string;
-  sender: 'user' | 'ai';
-}
+export type TuningTableType = 've' | 'ign' | 'boost' | 'torque' | 'throttle' | 'tcu' | 'launch';
+export type TuningOperation = 'add' | 'multiply' | 'set' | 'smooth' | 'linear_interp';
 
-// Types for the new Predictive AI Engine
-export interface PredictiveIssue {
-    component: string;
-    rootCause: string;
-    recommendedActions: string[];
-    plainEnglishSummary: string;
-    tsbs?: string[];
+export interface TuningModification {
+    targetTable: TuningTableType;
+    operation: TuningOperation;
+    range: {
+        minRpm: number;
+        maxRpm: number;
+        minLoad: number;
+        maxLoad: number;
+    };
+    value: number;
+    reasoning: string;
+    thoughtProcess?: string;
+    riskAssessment?: string;
+    outcomePrediction?: string;
 }
 
 export interface TimelineEvent {
     id: string;
     level: AlertLevel;
     title: string;
-    timeframe: string; // e.g., "Immediate", "Next 3 months", "Within 5000 miles"
-    details: PredictiveIssue;
+    timeframe: string;
+    details: any;
 }
 
-// Types for the new AI Tuning Assistant
-export interface TuningSuggestion {
-  suggestedParams: {
-    fuelMap: number;
-    ignitionTiming: number;
-    boostPressure: number;
-  };
-  analysis: {
-    predictedGains: string;
-    potentialRisks: string;
-  };
+export interface CopilotResponse {
+    speech: string;
+    intent: 'NAVIGATE' | 'UI_CONTROL' | 'TUNING_ACTION' | 'SYSTEM_ACTION' | 'ANALYSIS' | 'GENERAL';
+    actionPayload?: {
+        target: string;
+        value?: number | string;
+        parameters?: any;
+    };
 }
 
-// Types for Security Audit Trail
+export interface AIScanProgress {
+    stage: string;
+    progress: number;
+    complete: boolean;
+}
+
+export interface ActiveTest {
+    id: string;
+    name: string;
+    description: string;
+    command: string;
+    resetCommand?: string;
+    safetyInterlocks: {
+        maxRpm?: number;
+        minTemp?: number;
+        engineOff?: boolean;
+        vehicleStopped?: boolean;
+    }
+}
+
+// --- SUBSYSTEM TYPES ---
+export type AlsState = 'OFF' | 'ARMED' | 'ACTIVE';
+export type WmiState = 'OFF' | 'READY' | 'LOW' | 'SPRAYING';
+export type AlpState = 'PROTECT' | 'OVERRIDE';
+
+export interface SubsystemStatus {
+    als: AlsState;
+    wmi: WmiState;
+    alp: AlpState;
+}
+
+/**
+ * Diagnostic alert for the Alerts component.
+ */
+export interface DiagnosticAlert {
+    id: string;
+    level: AlertLevel;
+    component: string;
+    message: string;
+    timestamp: string;
+    isFaultRelated?: boolean;
+}
+
+/**
+ * Message structure for diagnostic chat.
+ */
+export interface ChatMessage {
+    id: string;
+    text: string;
+    sender: 'user' | 'ai';
+}
+
+/**
+ * Maintenance record for the service logbook.
+ */
+export interface MaintenanceRecord {
+    id: string;
+    date: string;
+    service: string;
+    notes: string;
+    verified: boolean;
+    isAiRecommendation: boolean;
+}
+
+export interface PlatformConfig {
+    displacement: number;
+    cylinders: number;
+    aspiration: 'NA' | 'Turbo';
+    fuelType: 'PETROL' | 'DIESEL';
+    maxEgt: number;
+    baseOctane: number;
+    vvtMax: number;
+    mbtBase: number;
+    maxRpm: number;
+}
+
+/**
+ * Engine configuration for AI tuning context.
+ */
+export interface VehicleConfig {
+    displacement: number;
+    cylinders: number;
+    aspiration: 'NA' | 'Turbo' | 'Supercharged';
+    fuelType: string;
+    injectors: number;
+    injectorSizeCc: number;
+    primePulseWidthMs: number;
+    maxRpm: number;
+    softCutRpm: number;
+    idleRpmTarget?: number;
+    weight: number;
+    vin?: string;
+    platformId?: string;
+    gearRatios?: number[];
+    finalDrive?: number;
+    tireCircumference?: number;
+}
+
+export interface LaunchControlSuite {
+    enabled: boolean;
+    launchRpm: number;
+    exitSpeed: number;
+    activationMethod: 'NEUTRAL' | 'CLUTCH_SWITCH' | 'SPEED_BASED' | 'BRAKE_HOLD';
+    strategy: 'IGNITION_CUT' | 'FUEL_CUT' | 'HYBRID';
+    hardLimit: boolean;
+    retardDeg: number;
+    flameOn: boolean;
+    antiLagEnabled: boolean;
+    stage2BoostTarget: number;
+    isStage2Active: boolean;
+}
+
+/**
+ * Event types for the security audit log.
+ */
 export enum AuditEvent {
-    Login = 'User Login',
-    AiAnalysis = 'AI Analysis',
-    DataSync = 'Data Sync',
-    TuningChange = 'Tuning Change',
-    DiagnosticQuery = 'Diagnostic Query'
+    AiAnalysis = 'AI_ANALYSIS',
+    Login = 'LOGIN',
+    TuningChange = 'TUNING_CHANGE',
+    DiagnosticQuery = 'DIAGNOSTIC_QUERY',
+    DataSync = 'DATA_SYNC'
 }
 
+/**
+ * Security audit log entry.
+ */
 export interface AuditLogEntry {
-  id: string;
-  timestamp: string;
-  event: AuditEvent;
-  description: string;
-  ipAddress: string;
-  status: 'Success' | 'Failure';
+    id: string;
+    timestamp: string;
+    event: AuditEvent;
+    description: string;
+    ipAddress: string;
+    status: 'Success' | 'Failure';
 }
 
-// Types for AR Assistant
-export enum IntentAction {
-  ShowComponent = 'SHOW_COMPONENT',
-  QueryService = 'QUERY_SERVICE',
-  HideComponent = 'HIDE_COMPONENT',
-  Unknown = 'UNKNOWN',
-}
-
-export interface VoiceCommandIntent {
-  intent: IntentAction;
-  component?: string; // e.g., 'o2-sensor', 'map-sensor'
-  confidence: number;
-}
-
-export interface ComponentHotspot {
-  id: string;
-  name: string;
-  cx: string;
-  cy: string;
-  status: 'Normal' | 'Warning' | 'Failing';
-}
-
-// Types for Hedera DLT Integration
+/**
+ * Event types for Hedera DLT logging.
+ */
 export enum HederaEventType {
-    Maintenance = 'Maintenance',
-    Tuning = 'AI Tuning',
-    Diagnostic = 'Diagnostic Alert',
+    Maintenance = 'MAINTENANCE',
+    Tuning = 'TUNING',
+    Diagnostic = 'DIAGNOSTIC',
+    Scrutineering = 'SCRUTINEERING'
 }
 
+/**
+ * Hedera DLT transaction record.
+ */
 export interface HederaRecord {
     id: string;
     timestamp: string;
@@ -164,49 +409,115 @@ export interface HederaRecord {
     vin: string;
     summary: string;
     hederaTxId: string;
-    dataHash: string; // The hash of the off-chain data
+    dataHash: string;
 }
 
-// Types for Race Pack
+/**
+ * Lap time data for circuit racing.
+ */
 export interface LapTime {
     lap: number;
     time: number;
+    split1?: number;
+    split2?: number;
 }
 
+/**
+ * Launch state for drag racing sequence.
+ */
+export enum LaunchState {
+    Idle = 'Idle',
+    Staging = 'Staging',
+    Go = 'Go',
+    FalseStart = 'FalseStart'
+}
+
+/**
+ * Drag strip sequence states.
+ */
+export enum DragStripState {
+    Idle = 'Idle',
+    PreStage = 'PreStage',
+    Stage = 'Stage',
+    Amber1 = 'Amber1',
+    Amber2 = 'Amber2',
+    Amber3 = 'Amber3',
+    Green = 'Green',
+    RedLight = 'RedLight',
+    Running = 'Running',
+    Finished = 'Finished'
+}
+
+/**
+ * Drag racing performance statistics.
+ */
+export interface DragStats {
+    reactionTime: number | null;
+    sixtyFootTime: number | null;
+    threeThirtyTime: number | null;
+    eighthMileTime: number | null;
+    eighthMileSpeed: number | null;
+    oneThousandTime: number | null;
+    quarterMileTime: number | null;
+    quarterMileSpeed: number | null;
+    zeroToSixtyTime: number | null;
+    zeroToHundredTime: number | null;
+    densityAltitude: number;
+    slope: number;
+    valid: boolean;
+}
+
+/**
+ * Race session container for circuit or drag data.
+ */
 export interface RaceSession {
+    mode: 'DRAG' | 'CIRCUIT' | 'BENCHMARK';
     isActive: boolean;
+    dragState: DragStripState;
+    launchState: LaunchState;
     startTime: number | null;
+    greenLightTime: number | null;
     elapsedTime: number;
     data: SensorDataPoint[];
     lapTimes: LapTime[];
-    zeroToHundredTime: number | null;
-    quarterMileTime: number | null;
-    quarterMileSpeed: number | null;
+    dragStats: DragStats;
+    currentDelta: number;
+    aiInsights: string[];
+    bestLapData: SensorDataPoint[];
+    currentSplit1?: number;
+    currentSplit2?: number;
 }
 
-// Types for Co-Pilot Intelligent Actions
-export interface CoPilotAction {
-  action: 'NAVIGATE' | 'SPEAK' | 'TOGGLE_FEATURE' | 'ANALYZE';
-  payload?: string; // Route path, feature name, or null
-  textToSpeak: string;
+/**
+ * Emissions monitors readiness status.
+ */
+export interface EmissionsReadiness {
+    misfire: boolean;
+    fuelSystem: boolean;
+    components: boolean;
+    catalyst: boolean;
+    evap: boolean;
+    o2Sensor: boolean;
+    egr: boolean;
 }
 
-// New: Structured Voice Response from Gemini
-export interface VoiceActionResponse {
-    speech: string;
-    action: 'NAVIGATE' | 'EXECUTE_FUNCTION' | 'NONE';
-    target: string | null;
-}
-
-// --- Dyno Lab Types ---
+/**
+ * Single data point from a dyno run.
+ */
 export interface DynoPoint {
     rpm: number;
-    torque: number; // Nm
-    power: number; // HP
+    torque: number;
+    power: number;
     afr: number;
-    boost: number; // bar
+    targetAfr: number;
+    boost: number;
+    ignition: number;
+    ve: number;
 }
 
+/**
+ * Historical dyno run record.
+ */
 export interface DynoRun {
     id: string;
     timestamp: number;
@@ -216,22 +527,92 @@ export interface DynoRun {
     peakTorque: number;
     color: string;
     isVisible: boolean;
+    aiSummary?: string;
+    performanceScore?: number;
 }
 
-// --- Diagnostics Types ---
-export interface DiagnosticCode {
-    code: string; // e.g. "P0300"
-    description?: string; // "Random/Multiple Cylinder Misfire Detected"
-    status: 'Confirmed' | 'Pending' | 'Permanent';
-    timestamp: number;
+export interface ObdOptimizationConfig {
+  multiPid: boolean;
+  adaptiveTiming: 0 | 1 | 2;
+  fastBaud: boolean;
+  canFiltering: boolean;
+  highFreqMode: boolean;
+  refreshRateTarget: number; // Hz
+  dmaEngine: boolean;
 }
 
-export interface EmissionsReadiness {
-    misfire: boolean;
-    fuelSystem: boolean;
-    components: boolean;
-    catalyst: boolean;
-    evap: boolean;
-    o2Sensor: boolean;
-    egr: boolean;
+/**
+ * ECU identification profile.
+ */
+export interface ECUProfile {
+    vin: string;
+    protocol: string;
+    hwId?: string;
+    swId?: string;
+    calibrationId?: string;
+    rawCalId?: string;
+    platformId?: 'MR20DE' | 'HR16DE' | 'K9K' | 'R9M' | 'M9R' | 'HRA2DDT' | 'MR16DDT' | 'KR15DDT' | 'HR13DDT' | 'VQ37' | 'VQ25' | 'VQ35DE' | 'BARRA' | 'EDC17' | 'GENERIC' | 'BOSCH_MG1';
+    optimization?: ObdOptimizationConfig;
+}
+
+export interface LoggingConfig {
+    selectedFields: string[];
+    format: 'CSV' | 'JSON';
+    frequency: number; // Hz
+}
+
+/**
+ * A data logging session.
+ */
+export interface LogSession {
+    id: string;
+    name: string;
+    startTime: number;
+    duration: number;
+    source: 'live_capture' | 'simulated_fallback';
+    dataPoints: Partial<SensorDataPoint>[];
+    stats: {
+        maxRpm: number;
+        maxBoost: number;
+        maxSpeed: number;
+        avgAfr: number;
+    };
+    config?: LoggingConfig;
+}
+
+/**
+ * Auto-tune modification decision.
+ */
+export interface AutoTuneDecision {
+    cell: { r: number, c: number };
+    oldValue: number;
+    newValue: number;
+    reason: string;
+    confidence: number;
+}
+
+export interface ThrottleTuning {
+    mode: 'ECO' | 'STANDARD' | 'SPORT' | 'SPORT_PLUS' | 'RACE' | 'CUSTOM' | 'VALET' | 'LOCK';
+    responseScale: number;
+    initialBite: number;
+    smoothing: number;
+}
+
+export interface TransmissionTuning {
+    shiftFirmness: number;
+    shiftPointOffset: number;
+    revMatching: boolean;
+    isSportModeActive: boolean;
+}
+
+/**
+ * Strategy parameters for map optimization.
+ */
+export interface OptimizationStrategy {
+    baseAdvanceLimit: number;
+    knockThreshold: number;
+    maxEgt: number;
+    smoothingFactor: number;
+    seekMbt: boolean;
+    targetAfr: number;
 }

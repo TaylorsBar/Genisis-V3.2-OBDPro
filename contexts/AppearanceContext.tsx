@@ -1,7 +1,7 @@
 
 import React, { createContext, useState, useEffect, useMemo } from 'react';
 
-export type Theme = 'rally' | 'modern' | 'classic' | 'haltech' | 'minimalist' | 'pro-tuner';
+export type Theme = 'rally' | 'modern' | 'classic' | 'haltech' | 'minimalist' | 'pro-tuner' | 'apexi' | 'elite' | 'motec-pro' | 'carbon-purple' | 'genesis-os' | 'nismo';
 export type ColorPalette = 'cyan' | 'red' | 'green' | 'purple' | 'amber';
 export type SurfaceMaterial = 'glass' | 'carbon' | 'brushed-metal' | 'matte';
 export type LEDMode = 'solid' | 'pulse' | 'music';
@@ -25,6 +25,10 @@ interface AppearanceContextProps {
   setLedSettings: (settings: Partial<LEDSettings>) => void;
   copilotAudioOutput: CopilotAudioOutput;
   setCopilotAudioOutput: (output: CopilotAudioOutput) => void;
+  isImmersive: boolean;
+  setIsImmersive: (immersive: boolean) => void;
+  isSideMenuOpen: boolean;
+  setIsSideMenuOpen: (isOpen: boolean) => void;
 }
 
 const defaultLedSettings: LEDSettings = {
@@ -51,9 +55,9 @@ const PALETTE_DIMS: Record<ColorPalette, string> = {
 };
 
 export const AppearanceContext = createContext<AppearanceContextProps>({
-  theme: 'haltech',
+  theme: 'genesis-os',
   setTheme: () => {},
-  colorPalette: 'cyan',
+  colorPalette: 'purple',
   setColorPalette: () => {},
   surfaceMaterial: 'glass',
   setSurfaceMaterial: () => {},
@@ -61,14 +65,18 @@ export const AppearanceContext = createContext<AppearanceContextProps>({
   setLedSettings: () => {},
   copilotAudioOutput: 'phone',
   setCopilotAudioOutput: () => {},
+  isImmersive: false,
+  setIsImmersive: () => {},
+  isSideMenuOpen: false,
+  setIsSideMenuOpen: () => {},
 });
 
 export const AppearanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setThemeState] = useState<Theme>(() => {
-      return (localStorage.getItem('vehicle-theme') as Theme) || 'haltech';
+      return (localStorage.getItem('vehicle-theme') as Theme) || 'genesis-os';
   });
   const [colorPalette, setColorPaletteState] = useState<ColorPalette>(() => {
-      return (localStorage.getItem('vehicle-palette') as ColorPalette) || 'cyan';
+      return (localStorage.getItem('vehicle-palette') as ColorPalette) || 'purple';
   });
   const [surfaceMaterial, setSurfaceMaterialState] = useState<SurfaceMaterial>(() => {
       return (localStorage.getItem('vehicle-material') as SurfaceMaterial) || 'glass';
@@ -80,6 +88,8 @@ export const AppearanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [copilotAudioOutput, setCopilotAudioOutputState] = useState<CopilotAudioOutput>(() => {
     return (localStorage.getItem('vehicle-copilot-audio') as CopilotAudioOutput) || 'phone';
   });
+  const [isImmersive, setIsImmersive] = useState(false);
+  const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -155,8 +165,12 @@ export const AppearanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     ledSettings,
     setLedSettings,
     copilotAudioOutput,
-    setCopilotAudioOutput
-  }), [theme, colorPalette, surfaceMaterial, ledSettings, copilotAudioOutput]);
+    setCopilotAudioOutput,
+    isImmersive,
+    setIsImmersive,
+    isSideMenuOpen,
+    setIsSideMenuOpen
+  }), [theme, colorPalette, surfaceMaterial, ledSettings, copilotAudioOutput, isImmersive, isSideMenuOpen]);
 
   return (
     <AppearanceContext.Provider value={value}>

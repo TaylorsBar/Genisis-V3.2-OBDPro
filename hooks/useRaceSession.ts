@@ -1,146 +1,319 @@
-
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useVehicleData } from './useVehicleData';
-import { SensorDataPoint, LapTime, RaceSession } from '../types';
+import { SensorDataPoint, RaceSession, LaunchState, DragStats, DragStripState } from '../types';
+import { analyzeRaceTelemetry, RaceEngineerReport } from '../services/geminiService';
+import { useVehicleStore } from '../stores/vehicleStore';
+import { useLapTimerStore } from '../stores/lapTimerStore';
 
-const QUARTER_MILE_METERS = 402.336;
+// Timing Constants for Drag
+const METERS_60_FT = 18.288;
+const METERS_330_FT = 100.584;
+const METERS_1_8_MILE = 201.168;
+const METERS_1000_FT = 304.8;
+const METERS_1_4_MILE = 402.336;
+
+const CIRCUIT_LAP_DISTANCE = 3500; // Simulated lap distance for circuit
+
+const initialDragStats: DragStats = {
+    reactionTime: null,
+    sixtyFootTime: null,
+    threeThirtyTime: null,
+    eighthMileTime: null,
+    eighthMileSpeed: null,
+    oneThousandTime: null,
+    quarterMileTime: null,
+    quarterMileSpeed: null,
+    zeroToSixtyTime: null,
+    zeroToHundredTime: null,
+    densityAltitude: 0,
+    slope: 0,
+    valid: true
+};
 
 const initialSessionState: RaceSession = {
+    mode: 'DRAG',
     isActive: false,
+    dragState: DragStripState.Idle,
+    launchState: LaunchState.Idle,
     startTime: null,
+    greenLightTime: null,
     elapsedTime: 0,
     data: [],
     lapTimes: [],
-    zeroToHundredTime: null,
-    quarterMileTime: null,
-    quarterMileSpeed: null,
+    dragStats: initialDragStats,
+    currentDelta: 0,
+    aiInsights: [],
+    bestLapData: []
+};
+
+const interpolateTime = (val1: number, time1: number, val2: number, time2: number, targetVal: number): number => {
+    if (val2 === val1) return time2;
+    const fraction = (targetVal - val1) / (val2 - val1);
+    return time1 + (time2 - time1) * fraction;
 };
 
 export const useRaceSession = () => {
-    const { latestData } = useVehicleData();
-    const [session, setSession] = useState<RaceSession>(initialSessionState);
-    const sessionUpdateRef = useRef<number | null>(null);
-    const isActiveRef = useRef(false);
+    const startLogging = useVehicleStore(state => state.startLogging);
+    const stopLogging = useVehicleStore(state => state.stopLogging);
+    const session = useVehicleStore(state => state.raceSession);
+    const setSessionState = useCallback((updater: (s: RaceSession) => RaceSession) => {
+        useVehicleStore.setState(state => ({ raceSession: updater(state.raceSession) }));
+    }, []);
     
-    // Use a ref to access the latest data inside the rAF loop without triggering effect re-runs
-    const latestDataRef = useRef(latestData);
+    const [aiReport, setAiReport] = useState<RaceEngineerReport | null>(null);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [isRecording, setIsRecording] = useState(false);
+    
+    const sessionUpdateRef = useRef<number | null>(null);
+    const treeTimeoutRef = useRef<any>(null);
+    const startDataRef = useRef<SensorDataPoint | null>(null);
 
-    useEffect(() => {
-        latestDataRef.current = latestData;
-    }, [latestData]);
+    const toggleRecording = useCallback(() => {
+        if (isRecording) {
+            stopLogging(`TrackCam_${Date.now()}`);
+            setIsRecording(false);
+        } else {
+            startLogging();
+            setIsRecording(true);
+        }
+    }, [isRecording, startLogging, stopLogging]);
+
+    const startTreeSequence = useCallback(() => {
+        if (treeTimeoutRef.current) clearTimeout(treeTimeoutRef.current);
+        setSessionState(s => ({ ...s, dragState: DragStripState.PreStage, isActive: true, data: [] }));
+        setAiReport(null);
+        
+        treeTimeoutRef.current = setTimeout(() => {
+            setSessionState(s => ({ ...s, dragState: DragStripState.Stage }));
+            const randomDelay = 1200 + Math.random() * 800;
+            
+            treeTimeoutRef.current = setTimeout(() => {
+                setSessionState(s => ({ ...s, dragState: DragStripState.Amber1 }));
+                treeTimeoutRef.current = setTimeout(() => {
+                    setSessionState(s => ({ ...s, dragState: DragStripState.Amber2 }));
+                    treeTimeoutRef.current = setTimeout(() => {
+                        setSessionState(s => ({ ...s, dragState: DragStripState.Amber3 }));
+                        treeTimeoutRef.current = setTimeout(() => {
+                            setSessionState(s => ({ 
+                                ...s, 
+                                dragState: DragStripState.Green, 
+                                greenLightTime: Date.now(),
+                                launchState: LaunchState.Go 
+                            }));
+                        }, 400);
+                    }, 400);
+                }, 400);
+            }, randomDelay);
+        }, 1500);
+    }, [setSessionState]);
+
+    const resetSession = useCallback(() => {
+        if (treeTimeoutRef.current) clearTimeout(treeTimeoutRef.current);
+        if (sessionUpdateRef.current) cancelAnimationFrame(sessionUpdateRef.current);
+        if (isRecording) {
+            stopLogging(`Session_Reset_${Date.now()}`);
+            setIsRecording(false);
+        }
+        useLapTimerStore.getState().resetSession();
+        setSessionState(s => ({ ...initialSessionState, mode: s.mode }));
+        setAiReport(null);
+        setIsAnalyzing(false);
+        startDataRef.current = null;
+        sessionUpdateRef.current = requestAnimationFrame(updateSession);
+    }, [isRecording, stopLogging, setSessionState]);
 
     const updateSession = useCallback(() => {
-        if (!isActiveRef.current) {
+        const state = useVehicleStore.getState();
+        const prev = state.raceSession;
+        if (!prev.isActive) {
+            sessionUpdateRef.current = requestAnimationFrame(updateSession);
             return;
         }
 
-        setSession(prev => {
-            if (!prev.isActive || !prev.startTime) return prev;
+        const currentData = state.latestData;
+        const prevData = prev.data.length > 0 ? prev.data[prev.data.length-1] : currentData;
+        
+        let nextSession = { ...prev };
 
-            const currentData = latestDataRef.current;
-            const now = performance.now();
-            const elapsedTime = now - prev.startTime;
-            
-            // Limit data array growth for performance (keep last 3000 points ~ 2.5 mins @ 20Hz)
-            // Prevents "Max update depth" issues caused by massive array cloning/rendering
-            const prevData = prev.data.length > 3000 ? prev.data.slice(1) : prev.data;
-            const newData = [...prevData, currentData];
+        if (prev.mode === 'DRAG') {
+            let dragState = prev.dragState;
+            let startTime = prev.startTime;
+            let dragStats = { ...prev.dragStats };
 
-            let { zeroToHundredTime, quarterMileTime, quarterMileSpeed } = prev;
+            // Foul detection (Red Light)
+            if (
+                (dragState === DragStripState.Stage || dragState === DragStripState.Amber1 || dragState === DragStripState.Amber2 || dragState === DragStripState.Amber3) 
+                && currentData.speed > 0.8
+            ) {
+                if (treeTimeoutRef.current) clearTimeout(treeTimeoutRef.current);
+                setSessionState(s => ({ ...s, dragState: DragStripState.RedLight, launchState: LaunchState.FalseStart, dragStats: { ...s.dragStats, valid: false } }));
+                return;
+            }
 
-            // 0-100km/h check
-            if (!zeroToHundredTime && currentData.speed >= 100) {
-                const startData = newData.find(d => d.speed > 0);
-                if (startData) {
-                    zeroToHundredTime = (currentData.time - startData.time) / 1000;
+            // Start Detection (1ft rollout equivalence using 0.8 km/h)
+            if ((dragState === DragStripState.Green || dragState === DragStripState.RedLight) && !startTime && currentData.speed > 0.8) {
+                dragState = DragStripState.Running;
+                // Interpolate exact start timestamp for NHRA spec accuracy
+                startTime = interpolateTime(prevData.speed, prevData.time, currentData.speed, currentData.time, 0.8);
+                startDataRef.current = currentData;
+                
+                if (prev.greenLightTime && prev.dragState !== DragStripState.RedLight) {
+                    dragStats.reactionTime = (startTime - prev.greenLightTime) / 1000;
+                }
+                if (!isRecording) {
+                    startLogging();
+                    setIsRecording(true);
                 }
             }
 
-            // 1/4 mile check
-            if (!quarterMileTime && currentData.distance >= QUARTER_MILE_METERS) {
-                const startData = newData[0];
-                if (startData) {
-                    // Find the exact point it crossed the line
-                    const lastPoint = prev.data[prev.data.length - 1];
-                    const fraction = (QUARTER_MILE_METERS - lastPoint.distance) / (currentData.distance - lastPoint.distance);
-                    const crossingTime = lastPoint.time + (currentData.time - lastPoint.time) * fraction;
+            // Split Calculation
+            if (dragState === DragStripState.Running && startTime && startDataRef.current) {
+                const curDist = currentData.distance - startDataRef.current.distance;
+                const prevDist = prevData.distance - startDataRef.current.distance;
+
+                const checkSplit = (dist: number, currentStat: number | null) => {
+                    if (currentStat !== null) return currentStat;
+                    if (curDist >= dist && prevDist < dist) {
+                        return (interpolateTime(prevDist, prevData.time, curDist, currentData.time, dist) - startTime!) / 1000;
+                    }
+                    return null;
+                };
+
+                const checkSpeedSplit = (targetSpeedKph: number, currentStat: number | null) => {
+                    if (currentStat !== null) return currentStat;
+                    if (currentData.speed >= targetSpeedKph && prevData.speed < targetSpeedKph) {
+                        return (interpolateTime(prevData.speed, prevData.time, currentData.speed, currentData.time, targetSpeedKph) - startTime!) / 1000;
+                    }
+                    return null;
+                };
+
+                dragStats.sixtyFootTime = checkSplit(METERS_60_FT, dragStats.sixtyFootTime);
+                dragStats.threeThirtyTime = checkSplit(METERS_330_FT, dragStats.threeThirtyTime);
+                dragStats.eighthMileTime = checkSplit(METERS_1_8_MILE, dragStats.eighthMileTime);
+                if (dragStats.eighthMileTime !== null && dragStats.eighthMileSpeed === null) {
+                    dragStats.eighthMileSpeed = interpolateTime(prevDist, prevData.speed, curDist, currentData.speed, METERS_1_8_MILE);
+                }
+                dragStats.oneThousandTime = checkSplit(METERS_1000_FT, dragStats.oneThousandTime);
+                
+                dragStats.zeroToSixtyTime = checkSpeedSplit(96.5606, dragStats.zeroToSixtyTime); // 0-60 MPH
+                dragStats.zeroToHundredTime = checkSpeedSplit(160.934, dragStats.zeroToHundredTime); // 0-100 MPH
+
+                if (dragStats.quarterMileTime === null && curDist >= METERS_1_4_MILE) {
+                    dragStats.quarterMileTime = (interpolateTime(prevDist, prevData.time, curDist, currentData.time, METERS_1_4_MILE) - startTime) / 1000;
+                    dragStats.quarterMileSpeed = interpolateTime(prevDist, prevData.speed, curDist, currentData.speed, METERS_1_4_MILE);
+                    dragState = DragStripState.Finished;
                     
-                    quarterMileTime = (crossingTime - startData.time) / 1000;
-                    quarterMileSpeed = currentData.speed;
+                    stopLogging(`Drag_1-4_Mile_${dragStats.quarterMileTime.toFixed(2)}s`);
+                    setIsRecording(false);
+
+                    // Trigger ATE Core v2.0 Analysis
+                    setIsAnalyzing(true);
+                    analyzeRaceTelemetry('DRAG', dragStats, [...prev.data, currentData]).then(report => {
+                        setAiReport(report);
+                        setIsAnalyzing(false);
+                    });
                 }
             }
 
-            return {
+            nextSession = {
                 ...prev,
-                elapsedTime,
-                data: newData,
-                zeroToHundredTime,
-                quarterMileTime,
-                quarterMileSpeed,
+                dragState,
+                startTime,
+                elapsedTime: startTime ? currentData.time - startTime : 0,
+                data: [...prev.data, currentData].slice(-5000),
+                dragStats
             };
-        });
+        } else if (prev.mode === 'CIRCUIT') {
+            let lapTimes = [...prev.lapTimes];
+            let startTime = prev.startTime;
+            
+            if (!startTime && currentData.speed > 5) {
+                startTime = interpolateTime(prevData.speed, prevData.time, currentData.speed, currentData.time, 5);
+                startDataRef.current = currentData;
+                if (!isRecording) {
+                    startLogging();
+                    setIsRecording(true);
+                }
+                // Also trigger startSession in high precision timer
+                useLapTimerStore.getState().startSession("Grand Loop");
+            }
 
-        // Check if still active before requesting next frame to prevent race conditions
-        if (isActiveRef.current) {
-            sessionUpdateRef.current = requestAnimationFrame(updateSession);
+            if (startTime && startDataRef.current) {
+                const curTotalDist = currentData.distance - startDataRef.current.distance;
+                const prevTotalDist = prevData.distance - startDataRef.current.distance;
+
+                const lapNumber = Math.floor(curTotalDist / CIRCUIT_LAP_DISTANCE);
+                const prevLapNumber = Math.floor(prevTotalDist / CIRCUIT_LAP_DISTANCE);
+
+                if (lapNumber > prevLapNumber) {
+                    // Trigger high precision lap transition
+                    useLapTimerStore.getState().startLap();
+                }
+            }
+
+            // Sync elapsed time from high-precision lapTimerStore if available
+            const timerState = useLapTimerStore.getState();
+            const elapsed = timerState.lapStartTimeRelative !== null 
+                ? (performance.now() - timerState.lapStartTimeRelative) 
+                : (startTime ? currentData.time - startTime : 0);
+
+            nextSession = {
+                ...prev,
+                startTime,
+                elapsedTime: elapsed,
+                lapTimes: timerState.lapTimes.length > 0 ? timerState.lapTimes : prev.lapTimes,
+                data: [...prev.data, currentData].slice(-2000),
+                currentSplit1: timerState.currentSplit1 || undefined,
+                currentSplit2: timerState.currentSplit2 || undefined
+            };
+        }
+
+        useVehicleStore.setState({ raceSession: nextSession });
+        sessionUpdateRef.current = requestAnimationFrame(updateSession);
+    }, [isRecording, startLogging, stopLogging, setSessionState]); 
+
+    const setMode = (mode: 'CIRCUIT' | 'DRAG' | 'BENCHMARK') => {
+        if (treeTimeoutRef.current) clearTimeout(treeTimeoutRef.current);
+        setSessionState(s => ({ ...initialSessionState, mode }));
+        setAiReport(null);
+    };
+
+    const initLaunchSequence = () => {
+        resetSession();
+        setSessionState(s => ({ ...s, isActive: true, mode: 'DRAG' }));
+        startTreeSequence();
+    };
+
+    const startCircuitSession = () => {
+        resetSession();
+        useLapTimerStore.getState().startSession("Grand Loop");
+    };
+
+    const triggerStartLap = useCallback(() => {
+        const lapTimer = useLapTimerStore.getState();
+        if (!lapTimer.isActive) {
+            lapTimer.startSession("Grand Loop");
+        }
+        lapTimer.startLap();
+        if (!isRecording) {
+            startLogging();
+            setIsRecording(true);
+        }
+    }, [isRecording, startLogging]);
+
+    const triggerMarkSector = useCallback(() => {
+        const lapTimer = useLapTimerStore.getState();
+        if (lapTimer.isActive) {
+            lapTimer.markSector();
         }
     }, []);
-    
+
     useEffect(() => {
-        isActiveRef.current = session.isActive;
-        
-        if (session.isActive) {
-            // Only start loop if not already running
-            if (!sessionUpdateRef.current) {
-                sessionUpdateRef.current = requestAnimationFrame(updateSession);
-            }
-        } else {
-            if (sessionUpdateRef.current) {
-                cancelAnimationFrame(sessionUpdateRef.current);
-                sessionUpdateRef.current = null;
-            }
-        }
-        
-        // Cleanup on unmount
+        sessionUpdateRef.current = requestAnimationFrame(updateSession);
         return () => {
-            isActiveRef.current = false;
-            if (sessionUpdateRef.current) {
-                cancelAnimationFrame(sessionUpdateRef.current);
-                sessionUpdateRef.current = null;
-            }
+            if (sessionUpdateRef.current) cancelAnimationFrame(sessionUpdateRef.current);
+            if (treeTimeoutRef.current) clearTimeout(treeTimeoutRef.current);
         };
-    }, [session.isActive, updateSession]);
+    }, [updateSession]);
 
-
-    const startSession = () => {
-        setSession({
-            ...initialSessionState,
-            isActive: true,
-            startTime: performance.now(),
-            data: [latestDataRef.current], // Start with the very first data point
-        });
-    };
-
-    const stopSession = () => {
-        setSession(prev => ({
-            ...prev,
-            isActive: false,
-        }));
-    };
-
-    const recordLap = () => {
-        setSession(prev => {
-            if (!prev.isActive || !prev.startTime) return prev;
-            
-            const totalPrevTime = prev.lapTimes.reduce((acc, l) => acc + l.time, 0);
-            const currentLapTime = prev.elapsedTime - totalPrevTime;
-
-            return {
-                ...prev,
-                lapTimes: [...prev.lapTimes, { lap: prev.lapTimes.length + 1, time: currentLapTime }],
-            };
-        });
-    };
-
-    return { session, startSession, stopSession, recordLap };
+    return { session, aiReport, isAnalyzing, isRecording, toggleRecording, setMode, initLaunchSequence, startCircuitSession, resetSession, triggerStartLap, triggerMarkSector };
 };

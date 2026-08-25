@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { SensorDataPoint } from '../types';
 
 interface SensorChartProps {
@@ -28,12 +28,12 @@ const CustomTooltip: React.FC<any> = ({ active, payload, label }) => {
   return null;
 };
 
-const SensorChart: React.FC<SensorChartProps> = ({ data, lines, title }) => {
+const SensorChart = React.memo(({ data, lines, title }: SensorChartProps) => {
   return (
     <div className="glass-panel p-5 rounded-2xl h-80 flex flex-col relative overflow-hidden">
       {/* Header */}
       <div className="flex justify-between items-center mb-2">
-        <h3 className="text-[0.7rem] font-display font-bold uppercase tracking-[0.2em] text-gray-400">{title}</h3>
+        <h3 className="text-[0.7rem] font-display font-semibold uppercase tracking-[0.2em] text-gray-300">{title}</h3>
         <div className="flex gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></div>
             <div className="w-1.5 h-1.5 rounded-full bg-brand-cyan animate-pulse delay-75"></div>
@@ -54,19 +54,19 @@ const SensorChart: React.FC<SensorChartProps> = ({ data, lines, title }) => {
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
             <XAxis 
                 dataKey="time" 
-                tickFormatter={(time) => ''}
+                tickFormatter={() => ''}
                 stroke="transparent"
             />
             <YAxis 
-                stroke="rgba(255,255,255,0.1)" 
-                tick={{fontSize: 10, fill: '#555', fontFamily: 'monospace'}} 
+                stroke="rgba(255,255,255,0.3)" 
+                tick={{fontSize: 10, fill: '#aaa', fontFamily: 'monospace'}} 
                 tickLine={false}
                 axisLine={false}
                 width={30}
             />
             <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1, strokeDasharray: '4 4' }} />
             <Legend wrapperStyle={{fontSize: "10px", fontFamily: "sans-serif", opacity: 0.7, paddingTop: "10px"}} iconType="circle" />
-            {lines.map((line, index) => (
+            {lines.map((line) => (
                 <Line
                     key={line.dataKey}
                     type="monotone"
@@ -84,6 +84,6 @@ const SensorChart: React.FC<SensorChartProps> = ({ data, lines, title }) => {
       </div>
     </div>
   );
-};
+});
 
 export default SensorChart;

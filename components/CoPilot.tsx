@@ -6,6 +6,7 @@ import { useTextToSpeech } from '../hooks/useTextToSpeech';
 import { interpretHandsFreeCommand } from '../services/geminiService';
 import { SensorDataPoint, DiagnosticAlert } from '../types';
 import MicrophoneIcon from './icons/MicrophoneIcon';
+import { useUIStore } from '../stores/uiStore';
 
 enum CoPilotState {
   Idle,
@@ -128,7 +129,7 @@ const CoPilot: React.FC<CoPilotProps> = ({ latestVehicleData, activeAlerts }) =>
 
   const toggleCoPilot = () => {
     if (!hasSupport) {
-        alert("Speech Recognition is not supported in this browser.");
+        useUIStore.getState().showToast("Speech Recognition is not supported in this browser.", "error");
         return;
     }
       

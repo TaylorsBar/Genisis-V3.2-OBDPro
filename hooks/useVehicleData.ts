@@ -1,18 +1,6 @@
-
-import { useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useVehicleStore } from '../stores/vehicleStore';
-
-/**
- * Hook for high-frequency sensor data (20Hz).
- * Use this only in components that need to render real-time gauges or graphs.
- */
-export const useVehicleTelemetry = () => {
-    const latestData = useVehicleStore(state => state.latestData);
-    const data = useVehicleStore(state => state.data);
-    const hasActiveFault = useVehicleStore(state => state.hasActiveFault);
-    
-    return { latestData, data, hasActiveFault };
-};
+import { SensorDataPoint } from '../types';
 
 /**
  * Hook for connection state and system controls (Low frequency).
@@ -24,34 +12,33 @@ export const useVehicleConnection = () => {
     const ekfStats = useVehicleStore(state => state.ekfStats);
     const connectObd = useVehicleStore(state => state.connectObd);
     const disconnectObd = useVehicleStore(state => state.disconnectObd);
-    const startSimulation = useVehicleStore(state => state.startSimulation);
-    const stopSimulation = useVehicleStore(state => state.stopSimulation);
+    const startFusionLoop = useVehicleStore(state => state.startFusionLoop);
+    const stopFusionLoop = useVehicleStore(state => state.stopFusionLoop);
 
     return { 
         obdState, 
         ekfStats, 
         connectObd, 
         disconnectObd, 
-        startSimulation,
-        stopSimulation
+        startFusionLoop,
+        stopFusionLoop
     };
 };
 
 /**
- * @deprecated Use useVehicleTelemetry or useVehicleConnection for better performance.
- * Legacy hook combining all state for backward compatibility with existing pages.
+ * Hook to retrieve a specific telemetry field from high-frequency vehicle data.
+ * Subscribes to only a single property of latestData to prevent redundant re-renders.
  */
-export const useVehicleData = () => {
-    const telemetry = useVehicleTelemetry();
-    const connection = useVehicleConnection();
+export const useTelemetryField = <K extends keyof SensorDataPoint>(field: K, throttleMs?: number): number => {
+    const value = useVehicleStore(state => state.latestData[field]);
+    return (value as number) || 0;
+};
 
-    // Auto-start simulation logic preserved for legacy components relying on this side-effect
-    useEffect(() => {
-        connection.startSimulation();
-    }, []);
-
-    return { 
-        ...telemetry, 
-        ...connection 
-    };
+/**
+ * Hook to retrieve full telemetry data and status for dashboard components.
+ */
+export const useVehicleTelemetry = () => {
+    const latestData = useVehicleStore(state => state.latestData);
+    const hasActiveFault = useVehicleStore(state => state.hasActiveFault);
+    return { latestData, hasActiveFault };
 };

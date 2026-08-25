@@ -14,26 +14,41 @@ export const MOCK_LOGS: MaintenanceRecord[] = [
 
 
 const MaintenanceLog: React.FC = () => {
-  const { primeFuelSystem, isPriming, latestData } = useVehicleStore();
+  const { primeFuelSystem, isPriming, latestData, dtcs } = useVehicleStore();
+
+  const exportReport = () => {
+    const reportData = {
+      sessionDate: new Date().toISOString(),
+      kinematicData: latestData,
+      diagnosticHistory: MOCK_LOGS,
+      dtcCodes: dtcs
+    };
+
+    const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `session-report-${new Date().toISOString()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center border-b border-gray-800 pb-4">
-        <div>
-            <h1 className="text-2xl font-bold text-white font-display tracking-tight">Service Database</h1>
-            <p className="text-gray-500 text-sm mt-1">Immutable Maintenance Records // VIN: JN1AZ00Z9ZT000123</p>
-        </div>
-        <button className="bg-white/5 hover:bg-white/10 text-brand-cyan border border-brand-cyan/50 font-semibold px-6 py-2 rounded uppercase text-xs tracking-wider transition-all shadow-[0_0_15px_rgba(0,240,255,0.1)]">
-            + Log Entry
-        </button>
-      </div>
-      
+    <div className="space-y-6 pt-4">
       {/* Service Functions / Active Tests */}
       <div className="bg-[#111] p-4 rounded-lg border border-brand-cyan/20">
-          <h2 className="text-sm font-bold text-brand-cyan uppercase tracking-widest mb-4 flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
-              Service Functions
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-bold text-brand-cyan uppercase tracking-widest flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+                Service Functions
+            </h2>
+            <button 
+              onClick={exportReport}
+              className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold uppercase tracking-widest px-4 py-2 rounded transition-all"
+            >
+                Export Report
+            </button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-black border border-gray-800 rounded p-4 flex flex-col justify-between">
                   <div>

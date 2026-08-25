@@ -1,0 +1,1 @@
+{"timestamp": "2026-07-30T01:33:22.494828+00:00", "event_type": "FLASH_SAFETY_GATE", "success": false, "status": "REJECTED", "critical_violations": ["Hard EGT limit violated: 1000.0\u00b0C exceeds maximum threshold of 950.0\u00b0C (EGT_HARD_CEILING)"], "advisories": [], "tune_config_summary": {"max_egt": 1000.0, "knock_buffer": 2.0, "has_ignition_map": false}}

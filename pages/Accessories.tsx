@@ -1,13 +1,13 @@
 
 import React, { useState, useContext } from 'react';
-import { AppearanceContext, CopilotAudioOutput } from '../contexts/AppearanceContext';
+import { AppearanceContext } from '../contexts/AppearanceContext';
 import SoundWaveIcon from '../components/icons/SoundWaveIcon';
 
 const Accessories: React.FC = () => {
     const { copilotAudioOutput, setCopilotAudioOutput } = useContext(AppearanceContext);
 
     const [isConnected, setIsConnected] = useState(true);
-    const [stereoName, setStereoName] = useState('Pioneer AVH-Z9200DAB');
+    const [stereoName] = useState('Pioneer AVH-Z9200DAB');
     const [volume, setVolume] = useState(75);
     const [source, setSource] = useState<'Radio' | 'Bluetooth' | 'USB'>('Bluetooth');
 

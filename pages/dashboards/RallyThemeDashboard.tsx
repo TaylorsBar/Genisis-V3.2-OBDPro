@@ -1,118 +1,279 @@
 
-import React from 'react';
-import { useVehicleData } from '../../hooks/useVehicleData';
-import { SensorDataPoint } from '../../types';
+import React, { useContext } from 'react';
+import { motion, AnimatePresence, useTransform, useMotionValue } from 'motion/react';
+import { useVehicleStore } from '../../stores/vehicleStore';
+import { useAnimatedValue } from '../../hooks/useAnimatedValue';
+import { AppearanceContext } from '../../contexts/AppearanceContext';
+import { ConnectedRallyDataBlock, StageTimer } from '../../components/dashboard/DashboardWidgets';
+import LiveAICoach from '../../components/widgets/LiveAICoach';
 
-const RallyDataBlock: React.FC<{ label: string; value: string | number; unit?: string; alert?: boolean }> = ({ label, value, unit, alert }) => (
-    <div className={`relative p-2 md:p-3 border-2 ${alert ? 'bg-red-600 border-red-600 text-white animate-pulse' : 'bg-[#1a1a1a] border-[var(--theme-color)] text-[var(--theme-color)]'} md:skew-x-[-10deg] shadow-lg min-h-[4rem] md:h-24 flex flex-col justify-center`}>
-        <div className="md:skew-x-[10deg]">
-            <div className={`text-[8px] md:text-[10px] font-black uppercase tracking-widest mb-1 ${alert ? 'text-white' : 'text-gray-400'}`}>{label}</div>
-            <div className="flex items-baseline gap-1">
-                <span className="text-2xl md:text-4xl font-black font-mono tracking-tighter leading-none">{value}</span>
-                {unit && <span className="text-[10px] md:text-xs font-bold">{unit}</span>}
-            </div>
-        </div>
-    </div>
-);
-
-const DigitalTapeRpm: React.FC<{ rpm: number; max: number }> = ({ rpm, max }) => {
-    const pct = Math.min(100, Math.max(0, (rpm / max) * 100));
-    const isRedline = pct > 85;
+const ConnectedRallyGear: React.FC = () => {
+    const gearMotion = useAnimatedValue("gear", { stiffness: 300, damping: 30 });
+    const rpmMotion = useAnimatedValue("rpm", { stiffness: 180, damping: 22 });
     
-    return (
-        <div className="w-full h-16 md:h-24 bg-black border-b-4 border-[var(--theme-color)] relative overflow-hidden flex items-end px-1 gap-0.5 md:gap-1">
-            {/* Grid Lines */}
-            <div className="absolute inset-0 z-0 opacity-20" style={{backgroundImage: 'linear-gradient(90deg, transparent 95%, #555 95%)', backgroundSize: '5% 100%'}}></div>
-            
-            {/* Bar Segments */}
-            {Array.from({length: 50}).map((_, i) => {
-                const barPct = (i / 50) * 100;
-                const active = pct >= barPct;
-                let color = 'bg-[var(--theme-color)]';
-                if (barPct > 70) color = 'bg-yellow-400';
-                if (barPct > 85) color = 'bg-red-600';
-                if (active && barPct > 85) color = 'bg-red-500 animate-pulse';
+    const [gear, setGear] = React.useState<string | number>('N');
+    const [isRedline, setIsRedline] = React.useState(false);
 
-                return (
-                    <div 
-                        key={i} 
-                        className={`flex-1 transition-all duration-75 ${active ? color : 'bg-[#222]'} ${active ? 'h-full' : 'h-[10%]'} rounded-t-sm`}
-                        style={{ opacity: active ? 1 : 0.3 }}
-                    />
-                )
-            })}
+    React.useEffect(() => {
+        const unsubs = [
+            gearMotion.on("change", (v) => {
+                const display = v === 0 ? 'N' : Math.round(v);
+                setGear(display);
+            }),
+            rpmMotion.on("change", (v) => {
+                setIsRedline(v > 7000);
+            })
+        ];
+        return () => unsubs.forEach(u => u());
+    }, [gearMotion, rpmMotion]);
+
+    return (
+        <motion.div 
+            animate={{ 
+                borderColor: isRedline ? '#ef4444' : 'var(--theme-color)',
+                scale: isRedline ? [1, 1.05, 1] : 1,
+                boxShadow: isRedline ? '0 0 60px rgba(239, 68, 68, 0.4)' : '0 0 60px rgba(0,0,0,0.8)'
+            }}
+            transition={{ duration: 0.2, repeat: isRedline ? Infinity : 0 }}
+            className="w-48 h-48 lg:w-64 lg:h-64 rounded-full border-8 bg-[#0a0a0a] flex items-center justify-center z-10 relative"
+        >
+            <div className="absolute inset-2 border border-dashed border-gray-600 rounded-full animate-[spin-slow_10s_linear_infinite] opacity-50"></div>
             
-            {/* Big Number Overlay */}
-            <div className="absolute top-1 md:top-2 right-2 md:right-4 text-4xl md:text-6xl font-black text-white font-mono z-10 drop-shadow-[0_4px_0_rgba(0,0,0,1)] italic">
-                {rpm.toFixed(0)}
+            <AnimatePresence mode="wait">
+                <motion.span 
+                    key={gear}
+                    initial={{ opacity: 0, scale: 0.5, rotate: -20 }}
+                    animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                    exit={{ opacity: 0, scale: 1.5, rotate: 20 }}
+                    className="text-[10rem] lg:text-[12rem] font-black text-white italic leading-none" 
+                    style={{ textShadow: '5px 5px 0px #333' }}
+                >
+                    {gear}
+                </motion.span>
+            </AnimatePresence>
+            
+            <span className="absolute bottom-6 text-sm font-bold bg-white text-black px-2 uppercase tracking-widest">Gear</span>
+        </motion.div>
+    );
+};
+
+const ConnectedRallySpeed: React.FC = () => {
+    const valMotion = useAnimatedValue("speed", { stiffness: 180, damping: 22 });
+    const [isFast, setIsFast] = React.useState(false);
+
+    React.useEffect(() => {
+        return valMotion.on("change", (v) => {
+            setIsFast(v > 100);
+        });
+    }, [valMotion]);
+
+    const displayValue = useTransform(valMotion, (v: number) => v.toFixed(0));
+
+    return (
+        <motion.div 
+            animate={{ scale: isFast ? 1.05 : 1 }}
+            className="absolute -bottom-6 -right-10 lg:-right-20 bg-[var(--theme-color)] text-black px-6 py-2 transform skew-x-[-15deg] border-4 border-white shadow-xl z-20"
+        >
+            <div className="skew-x-[15deg] text-center">
+                <motion.span className="text-5xl lg:text-7xl font-black block tracking-tighter leading-none">
+                    {displayValue}
+                </motion.span>
+                <span className="text-xs font-bold uppercase tracking-[0.4em] block border-t-2 border-black mt-1 pt-1">KM/H</span>
             </div>
-            <div className="absolute top-2 md:top-4 left-2 md:left-4 text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-[0.5em]">Engine Speed</div>
+        </motion.div>
+    );
+};
+
+const ConnectedRallyOverheat: React.FC = () => {
+    const tempMotion = useAnimatedValue("engineTemp");
+    const [isOverheat, setIsOverheat] = React.useState(false);
+
+    React.useEffect(() => {
+        return tempMotion.on("change", (v) => {
+            setIsOverheat(v > 105);
+        });
+    }, [tempMotion]);
+
+    return (
+        <motion.span 
+            animate={{ 
+                backgroundColor: isOverheat ? '#dc2626' : '#1f2937',
+                color: isOverheat ? '#ffffff' : '#9ca3af'
+            }}
+            className="px-2 py-0.5 text-[10px] font-bold uppercase skew-x-[-12deg]"
+        >
+            {isOverheat ? 'OVERHEAT' : 'TEMPS OK'}
+        </motion.span>
+    );
+};
+
+const ConnectedRallyGForce: React.FC = () => {
+    const gMotion = useAnimatedValue("gForceY");
+    const [accel, setAccel] = React.useState(false);
+    const [brake, setBrake] = React.useState(false);
+
+    React.useEffect(() => {
+        return gMotion.on("change", (v) => {
+            setAccel(v > 0.5);
+            setBrake(v < -0.5);
+        });
+    }, [gMotion]);
+
+    return (
+        <div className="flex gap-4">
+            <div className="flex items-center gap-2">
+                <motion.div 
+                    animate={{ backgroundColor: accel ? '#22c55e' : '#4b5563' }}
+                    className="w-2 h-2 rounded-full"
+                ></motion.div>
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">ACCEL</span>
+            </div>
+            <div className="flex items-center gap-2">
+                <motion.div 
+                    animate={{ backgroundColor: brake ? '#ef4444' : '#4b5563' }}
+                    className="w-2 h-2 rounded-full"
+                ></motion.div>
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">BRAKE</span>
+            </div>
         </div>
     );
 };
 
+// --- MAIN DASHBOARD ---
+
 const RallyThemeDashboard: React.FC = () => {
-    const { latestData } = useVehicleData();
-    const d: SensorDataPoint = latestData;
+    const { isImmersive } = useContext(AppearanceContext);
+    
+    // Vibration Physics with Motion
+    const xShake = useMotionValue(0);
+    const yShake = useMotionValue(0);
+
+    React.useEffect(() => {
+        // Shaking disabled for precision as requested
+        xShake.set(0);
+        yShake.set(0);
+    }, [xShake, yShake]);
 
     return (
-        <div className="flex flex-col h-full w-full bg-[#0a0a0a] text-white overflow-hidden relative font-mono selection:bg-yellow-500">
+        <div className="flex flex-col h-full w-full bg-[#111] text-white overflow-hidden relative font-sans selection:bg-yellow-500">
             
-            {/* CSS Var Override for Rally Default */}
+            {/* CSS Var Override for Rally Theme */}
             <style>{`
                 :root { --theme-color: #FCEE0A; } 
+                @font-face { font-family: 'RallyFont'; src: local('Impact'), local('Arial Black'); }
             `}</style>
 
-            {/* Dirt Texture Overlay */}
-            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='1'/%3E%3C/svg%3E")`,
+            {/* Dirt/Grunge Overlay */}
+            <div className="absolute inset-0 opacity-10 pointer-events-none z-50 mix-blend-overlay" style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='1'/%3E%3C/svg%3E")`,
             }}></div>
 
-            {/* Top RPM Bar */}
-            <div className="w-full z-10 shrink-0">
-                <DigitalTapeRpm rpm={d.rpm} max={8000} />
-            </div>
-
-            {/* Main Content */}
-            <div className="flex-1 p-4 md:p-6 grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6 z-10 min-h-0 overflow-y-auto md:overflow-hidden">
+            {/* Main Content with Vibration Effect */}
+            <motion.div 
+                style={{ x: xShake, y: yShake }}
+                className={`flex-1 p-4 lg:p-6 grid grid-cols-12 gap-4 lg:gap-6 z-10 overflow-y-auto lg:overflow-hidden relative ${isImmersive ? 'pt-8' : ''}`}
+            >
                 
-                {/* Left Telemetry */}
-                <div className="col-span-1 md:col-span-3 flex flex-row md:flex-col gap-2 md:gap-4 order-2 md:order-1">
-                    <div className="flex-1"><RallyDataBlock label="Boost" value={d.turboBoost.toFixed(2)} unit="BAR" /></div>
-                    <div className="flex-1"><RallyDataBlock label="Oil P" value={d.oilPressure.toFixed(1)} unit="BAR" alert={d.oilPressure < 1.0} /></div>
-                    <div className="flex-1"><RallyDataBlock label="Coolant" value={d.engineTemp.toFixed(0)} unit="°C" alert={d.engineTemp > 105} /></div>
+                {/* Left Column: Engine Health */}
+                <div className="col-span-12 lg:col-span-3 flex flex-row lg:flex-col gap-3 order-2 lg:order-1">
+                    <div className="flex-1"><ConnectedRallyDataBlock label="Boost" dataKey="turboBoost" unit="BAR" fixed={2} /></div>
+                    <div className="flex-1"><ConnectedRallyDataBlock label="Oil Press" dataKey="oilPressure" unit="BAR" alertThreshold={1.0} alertCondition="less" /></div>
+                    <div className="flex-1"><ConnectedRallyDataBlock label="Coolant" dataKey="engineTemp" unit="°C" alertThreshold={105} alertCondition="greater" fixed={0} /></div>
+                    <div className="flex-1 lg:hidden xl:block"><ConnectedRallyDataBlock label="Brake Temp" dataKey="brakeTemp" unit="°C" alertThreshold={600} alertCondition="greater" fixed={0} /></div>
                 </div>
 
-                {/* Center Gear & Speed */}
-                <div className="col-span-1 md:col-span-6 flex flex-col items-center justify-center relative order-1 md:order-2 h-[40vh] md:h-full py-4 md:py-0">
-                    <div className="w-full max-w-[60vw] md:max-w-md aspect-square bg-black border-4 border-[var(--theme-color)] rounded-full flex flex-col items-center justify-center shadow-[0_0_50px_rgba(252,238,10,0.2)] relative">
-                        <span className="text-[25vw] md:text-[14rem] font-black text-white leading-none italic mt-[-10%]" style={{ textShadow: '10px 10px 0px #333' }}>{d.gear === 0 ? 'N' : d.gear}</span>
-                        <span className="absolute bottom-[15%] md:bottom-16 text-sm md:text-xl font-bold text-gray-500 bg-black px-4 uppercase tracking-[0.5em]">Gear</span>
-                    </div>
+                {/* Center Column: Driver Focus */}
+                <div className="col-span-12 lg:col-span-6 flex flex-col items-center justify-start lg:justify-center relative order-1 lg:order-2 min-h-[300px]">
                     
-                    <div className="absolute bottom-4 md:bottom-0 bg-[var(--theme-color)] text-black px-8 md:px-12 py-1 md:py-2 transform md:skew-x-[-15deg] shadow-xl border-4 border-white rounded md:rounded-none">
-                        <span className="text-5xl md:text-7xl font-black block transform md:skew-x-[15deg] tracking-tighter">
-                            {d.speed.toFixed(0)}
-                        </span>
+                    {/* Stage Timer (Top Center) */}
+                    <div className="mb-8 w-full max-w-sm">
+                        <ConnectedRallyTimer />
+                    </div>
+
+                    {/* Gear & Speed Cluster */}
+                    <div className="relative flex items-center justify-center">
+                        {/* Gear Circle */}
+                        <ConnectedRallyGear />
+
+                        {/* Speed Plate (Behind) */}
+                        <ConnectedRallySpeed />
                     </div>
                 </div>
 
-                {/* Right Telemetry */}
-                <div className="col-span-1 md:col-span-3 flex flex-row md:flex-col gap-2 md:gap-4 order-3">
-                    <div className="flex-1"><RallyDataBlock label="Lambda" value={(d.o2SensorVoltage * 2 + 9).toFixed(1)} unit="" /></div>
-                    <div className="flex-1"><RallyDataBlock label="Intake" value={d.inletAirTemp.toFixed(0)} unit="°C" /></div>
-                    <div className="flex-1"><RallyDataBlock label="Volts" value={d.batteryVoltage.toFixed(1)} unit="V" /></div>
+                {/* Right Column: Performance & Environment */}
+                <div className="col-span-12 lg:col-span-3 flex flex-row lg:flex-col gap-3 order-3">
+                    <div className="flex-1">
+                        <ConnectedRallyDelta />
+                    </div>
+                    <div className="flex-1"><ConnectedRallyDataBlock label="Lambda" dataKey="o2SensorVoltage" unit="AFR" fixed={2} /></div>
+                    <div className="flex-1"><ConnectedRallyDataBlock label="Intake" dataKey="inletAirTemp" unit="°C" fixed={0} /></div>
+                    <div className="flex-1 lg:hidden xl:block"><ConnectedRallyDataBlock label="Fuel" dataKey="fuelLevel" unit="%" fixed={0} /></div>
+                    
+                    <div className="mt-auto hidden lg:block">
+                        <LiveAICoach />
+                    </div>
                 </div>
-            </div>
+            </motion.div>
 
-            {/* Bottom Status Strip */}
-            <div className="h-8 md:h-10 bg-[#111] border-t-4 border-[var(--theme-color)] flex items-center justify-between px-4 md:px-6 z-10 shrink-0">
-                 <div className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest">Stage Mode: <span className="text-[var(--theme-color)] animate-pulse">ACTIVE</span></div>
-                 <div className="flex gap-2">
-                     <span className={`px-2 md:px-3 py-0.5 md:py-1 text-[8px] md:text-[10px] font-bold uppercase md:skew-x-[-10deg] ${d.engineTemp > 100 ? 'bg-red-600 text-white animate-pulse' : 'bg-green-600 text-black'}`}>ENGINE OK</span>
-                     <span className="hidden md:block px-3 py-1 bg-green-600 text-black text-[10px] font-bold uppercase skew-x-[-10deg]">ABS ON</span>
-                     <span className="hidden md:block px-3 py-1 bg-[var(--theme-color)] text-black text-[10px] font-bold uppercase skew-x-[-10deg]">DIFF LOCK</span>
+            {/* Bottom Status Strip (Co-Driver Info) */}
+            <div className="h-10 bg-[#080808] border-t border-[#333] flex items-center justify-between px-4 lg:px-8 z-20 shrink-0">
+                 <ConnectedRallyGForce />
+
+                 <div className="flex gap-1">
+                     <span className="bg-white text-black px-2 py-0.5 text-[10px] font-bold uppercase skew-x-[-12deg]">ALS: ON</span>
+                     <span className="bg-[var(--theme-color)] text-black px-2 py-0.5 text-[10px] font-bold uppercase skew-x-[-12deg]">MAP: STAGE 3</span>
+                     <ConnectedRallyOverheat />
                  </div>
+            </div>
+        </div>
+    );
+};
+
+const ConnectedRallyTimer: React.FC = () => {
+    const [time, setTime] = React.useState(0);
+    
+    React.useEffect(() => {
+        let rafId: number;
+        const loop = () => {
+            const state = useVehicleStore.getState();
+            setTime(state.raceSession.elapsedTime || 0);
+            rafId = requestAnimationFrame(loop);
+        };
+        rafId = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(rafId);
+    }, []);
+
+    return <StageTimer time={time} />;
+};
+
+const ConnectedRallyDelta: React.FC = () => {
+    const [delta, setDelta] = React.useState(0);
+    
+    React.useEffect(() => {
+        let rafId: number;
+        const loop = () => {
+            const state = useVehicleStore.getState();
+            setDelta(state.raceSession.currentDelta || 0);
+            rafId = requestAnimationFrame(loop);
+        };
+        rafId = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(rafId);
+    }, []);
+
+    const isPositive = delta > 0;
+
+    return (
+        <div className="relative p-3 border-b-4 border-r-4 transition-all duration-100 group overflow-hidden bg-[#151515] border-[#333] hover:bg-[#222] skew-x-[-12deg] shadow-lg flex flex-col justify-between h-24">
+            <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0)_50%,rgba(0,0,0,0.2)_50%)] bg-[length:100%_4px] pointer-events-none opacity-50"></div>
+            <div className="skew-x-[12deg] flex justify-between items-start">
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Delta</span>
+                <span className="text-[10px] font-bold text-gray-700">-</span>
+            </div>
+            <div className="skew-x-[12deg] flex items-baseline gap-1 mt-auto">
+                <span className={`text-4xl lg:text-5xl font-black font-mono tracking-tighter leading-none shadow-black drop-shadow-md ${isPositive ? 'text-red-500' : 'text-green-500'}`}>
+                    {isPositive ? '+' : ''}{delta.toFixed(2)}
+                </span>
+                <span className="text-xs font-bold opacity-60 font-sans uppercase text-white">SEC</span>
             </div>
         </div>
     );

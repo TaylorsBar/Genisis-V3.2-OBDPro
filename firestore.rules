@@ -1,0 +1,139 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Pillar 4: Default Deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Entity Validation Helpers ---
+
+    function isValidTuningProfile(data) {
+      return data.keys().hasAll(['id', 'name', 'createdAt'])
+        && data.keys().size() <= 4
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 128
+        && data.createdAt is number
+        && (!data.keys().hasAny(['tuning']) || (data.tuning is map 
+            && (!data.tuning.keys().hasAny(['boostTarget']) || (data.tuning.boostTarget is number && data.tuning.boostTarget >= 0 && data.tuning.boostTarget <= 10))
+        ));
+    }
+
+    function isValidLogSession(data) {
+      return data.keys().hasAll(['id', 'name', 'startTime'])
+        && data.keys().size() <= 6
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 128
+        && data.startTime is number
+        && (!data.keys().hasAny(['duration']) || data.duration is number)
+        && (!data.keys().hasAny(['dataPoints']) || data.dataPoints is list)
+        && (!data.keys().hasAny(['stats']) || data.stats is map);
+    }
+
+    function isValidDynoRun(data) {
+      return data.keys().hasAll(['id', 'timestamp', 'peakHp', 'peakTorque'])
+        && data.keys().size() == 4
+        && data.id is string && data.id.size() <= 128
+        && data.timestamp is number
+        && data.peakHp is number
+        && data.peakTorque is number;
+    }
+
+    function isValidSystemLog(data) {
+      return data.keys().hasAll(['id', 'timestamp', 'level', 'category', 'message'])
+        && data.keys().size() <= 6
+        && data.id is string && data.id.size() <= 128
+        && data.timestamp is number
+        && data.level is string && data.level.size() <= 32
+        && data.category is string && data.category.size() <= 64
+        && data.message is string && data.message.size() <= 1024
+        && (!data.keys().hasAny(['details']) || data.details is string);
+    }
+
+    function isValidLapSession(data) {
+      return data.keys().hasAll(['id', 'timestamp'])
+        && data.keys().size() <= 5
+        && data.id is string && data.id.size() <= 128
+        && data.timestamp is number
+        && (!data.keys().hasAny(['trackName']) || data.trackName is string && data.trackName.size() <= 128)
+        && (!data.keys().hasAny(['laps']) || data.laps is list)
+        && (!data.keys().hasAny(['bestLapTime']) || data.bestLapTime is number);
+    }
+
+    // --- Path Matches ---
+
+    match /users/{userId} {
+      
+      match /profiles/{profileId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isVerified() && isValidId(profileId) && isValidTuningProfile(incoming()) && incoming().id == profileId && (request.time.toMillis() - incoming().createdAt) < 60000 && (incoming().createdAt - request.time.toMillis()) < 60000;
+        allow update: if isOwner(userId) && isVerified() && isValidTuningProfile(incoming()) 
+          && incoming().id == existing().id 
+          && incoming().createdAt == existing().createdAt
+          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'tuning']);
+        allow delete: if isOwner(userId) && isVerified();
+      }
+
+      match /logs/{logId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isVerified() && isValidId(logId) && isValidLogSession(incoming()) && incoming().id == logId && (request.time.toMillis() - incoming().startTime) < 60000 && (incoming().startTime - request.time.toMillis()) < 60000;
+        allow update: if isOwner(userId) && isVerified() && isValidLogSession(incoming()) 
+          && incoming().id == existing().id 
+          && incoming().startTime == existing().startTime
+          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'duration', 'dataPoints', 'stats']);
+        allow delete: if isOwner(userId) && isVerified();
+      }
+
+      match /dynoRuns/{runId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isVerified() && isValidId(runId) && isValidDynoRun(incoming()) && incoming().id == runId && (request.time.toMillis() - incoming().timestamp) < 60000 && (incoming().timestamp - request.time.toMillis()) < 60000;
+        allow update: if false; // Dyno sweeps are historical log data and immutable after creation
+        allow delete: if isOwner(userId) && isVerified();
+      }
+
+      match /systemLogs/{systemLogId} {
+        allow read: if isOwner(userId);
+        // Do not require email_verified for systemLogs, so that early boot sequence logs from new signups are caught!
+        allow create: if isOwner(userId) && isValidId(systemLogId) && isValidSystemLog(incoming()) && incoming().id == systemLogId && (request.time.toMillis() - incoming().timestamp) < 60000 && (incoming().timestamp - request.time.toMillis()) < 60000;
+        allow update: if false; // System log audits are immutable
+        allow delete: if isOwner(userId) && isVerified();
+      }
+
+      match /lapSessions/{sessionId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isVerified() && isValidId(sessionId) && isValidLapSession(incoming()) && incoming().id == sessionId && (request.time.toMillis() - incoming().timestamp) < 60000 && (incoming().timestamp - request.time.toMillis()) < 60000;
+        allow update: if isOwner(userId) && isVerified() && isValidLapSession(incoming())
+          && incoming().id == existing().id
+          && incoming().timestamp == existing().timestamp
+          && incoming().diff(existing()).affectedKeys().hasOnly(['trackName', 'laps', 'bestLapTime']);
+        allow delete: if isOwner(userId) && isVerified();
+      }
+    }
+  }
+}

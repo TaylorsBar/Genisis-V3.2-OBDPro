@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion, useTransform } from 'motion/react';
 import { useAnimatedValue } from '../../hooks/useAnimatedValue';
 
 interface HorizontalTachometerProps {
@@ -9,28 +10,41 @@ const RPM_MAX = 8000;
 const REDLINE_START = 6500;
 const NUM_SEGMENTS = 80;
 
-const HorizontalTachometer: React.FC<HorizontalTachometerProps> = ({ rpm }) => {
+const HorizontalTachometer: React.FC<HorizontalTachometerProps> = React.memo(({ rpm }) => {
   const animatedRpm = useAnimatedValue(rpm);
-  const rpmForDisplay = Math.floor(animatedRpm);
-  const activeSegments = Math.round((animatedRpm / RPM_MAX) * NUM_SEGMENTS);
+  
+  const rpmForDisplay = useTransform(animatedRpm, (v: number) => Math.floor(v));
+  const activeSegments = useTransform(animatedRpm, (v: number) => Math.round((v / RPM_MAX) * NUM_SEGMENTS));
+  const textRef = React.useRef<HTMLSpanElement>(null);
 
-  const isRedlining = animatedRpm > REDLINE_START;
-  const flash = isRedlining && Math.floor(Date.now() / 150) % 2 === 0;
-
-  const getSegmentColor = (i: number, isActive: boolean) => {
-    if (!isActive) return 'var(--theme-indicator-inactive)';
-    const segmentRpm = (i + 1) * (RPM_MAX / NUM_SEGMENTS);
-    if (segmentRpm > REDLINE_START) {
-      return flash ? 'bg-white' : 'bg-[var(--theme-accent-red)] shadow-[0_0_6px_var(--theme-accent-red)]';
-    }
-    if (segmentRpm > 4500) return 'bg-[var(--theme-accent-secondary)]';
-    return 'bg-[var(--theme-accent-primary)]';
-  };
+  React.useEffect(() => {
+    const unsubscribe = rpmForDisplay.on("change", (latest) => {
+      if (textRef.current) textRef.current.textContent = latest.toString();
+    });
+    return () => unsubscribe();
+  }, [rpmForDisplay]);
 
   const segments = Array.from({ length: NUM_SEGMENTS }, (_, i) => {
-    const isActive = i < activeSegments;
-    const colorClass = getSegmentColor(i, isActive);
-    return <div key={i} className={`h-10 flex-1 transition-colors duration-75 ${colorClass}`} />;
+    const segmentRpm = (i + 1) * (RPM_MAX / NUM_SEGMENTS);
+    const isRedline = segmentRpm > REDLINE_START;
+    
+    // We use a custom transform for each segment to avoid re-rendering the whole list
+    const opacity = useTransform(activeSegments, (active: number) => i < active ? 1 : 0.2);
+    
+    let colorClass = 'bg-[var(--theme-accent-primary)]';
+    if (segmentRpm > REDLINE_START) {
+        colorClass = 'bg-[var(--theme-accent-red)] shadow-[0_0_6px_var(--theme-accent-red)]';
+    } else if (segmentRpm > 4500) {
+        colorClass = 'bg-[var(--theme-accent-secondary)]';
+    }
+
+    return (
+      <motion.div 
+        key={i} 
+        style={{ opacity }}
+        className={`h-10 flex-1 transition-colors duration-75 ${colorClass}`} 
+      />
+    );
   });
 
   return (
@@ -41,9 +55,12 @@ const HorizontalTachometer: React.FC<HorizontalTachometerProps> = ({ rpm }) => {
         <div className="w-full flex gap-[2px] p-1 bg-black/50 border-2 border-gray-800/50 rounded-md">
             {segments}
         </div>
-        <div className="mt-2 text-5xl font-display text-white">{rpmForDisplay} <span className="text-xl text-gray-400">RPM</span></div>
+        <div className="mt-2 text-5xl font-display text-white">
+            <span ref={textRef}>{rpmForDisplay.get()}</span> <span className="text-xl text-gray-400">RPM</span>
+        </div>
     </div>
   );
-};
+});
+
 
 export default HorizontalTachometer;

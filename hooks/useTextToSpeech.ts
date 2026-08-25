@@ -46,6 +46,50 @@ export const useTextToSpeech = () => {
     };
   }, []);
 
+  const fallbackSpeak = useCallback((text: string, onEnd?: () => void) => {
+    if (!window.speechSynthesis) {
+        setIsSpeaking(false);
+        if (onEnd) onEnd();
+        return;
+    }
+    try {
+        window.speechSynthesis.cancel();
+        
+        // Split text into smaller chunks if it's too long, Web Speech can sometimes choke
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        
+        // Try to pick a responsive/modern voice
+        const voices = window.speechSynthesis.getVoices();
+        const pilotVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || 
+                           voices.find(v => v.lang.startsWith('en')) || 
+                           null;
+        
+        if (pilotVoice) {
+            utterance.voice = pilotVoice;
+        }
+
+        utterance.onend = () => {
+            setIsSpeaking(false);
+            if (onEnd) onEnd();
+        };
+
+        utterance.onerror = (e) => {
+            console.error("SpeechSynthesis error:", e);
+            setIsSpeaking(false);
+            if (onEnd) onEnd();
+        };
+
+        setIsSpeaking(true);
+        window.speechSynthesis.speak(utterance);
+    } catch (err) {
+        console.error("Fallback speech synthesis failed:", err);
+        setIsSpeaking(false);
+        if (onEnd) onEnd();
+    }
+  }, []);
+
   const speak = useCallback(async (text: string, onEnd?: () => void) => {
     if (!text) return;
 
@@ -58,12 +102,16 @@ export const useTextToSpeech = () => {
         }
 
         // Generate audio from Gemini
-        const audioData = await generateGeminiSpeech(text);
+        let audioData: ArrayBuffer | null = null;
+        try {
+            audioData = await generateGeminiSpeech(text);
+        } catch (apiErr) {
+            console.warn("Gemini Speech API failed. Falling back to local offline TTS engine.", apiErr);
+        }
         
-        if (!audioData || !audioContextRef.current) {
-            console.error("Failed to generate audio or no audio context.");
-            setIsSpeaking(false);
-            if (onEnd) onEnd();
+        if (!audioData || audioData.byteLength === 0 || !audioContextRef.current) {
+            console.info("Using native offline fallback TTS engine.");
+            fallbackSpeak(text, onEnd);
             return;
         }
 
@@ -90,16 +138,18 @@ export const useTextToSpeech = () => {
         source.start();
 
     } catch (error) {
-        console.error("Error in TTS playback:", error);
-        setIsSpeaking(false);
-        if (onEnd) onEnd();
+        console.error("Error in primary TTS playback, falling back:", error);
+        fallbackSpeak(text, onEnd);
     }
-  }, []);
+  }, [fallbackSpeak]);
   
   const cancel = useCallback(() => {
     if (sourceRef.current) {
       try { sourceRef.current.stop(); } catch (e) {}
       sourceRef.current = null;
+    }
+    if (window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch (e) {}
     }
     setIsSpeaking(false);
   }, []);

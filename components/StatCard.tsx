@@ -16,7 +16,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, unit, className, chil
       <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-brand-cyan/50 to-transparent opacity-50"></div>
       
       <div className="flex items-center justify-between mb-2 relative z-10">
-        <h3 className="text-[0.65rem] font-display font-bold uppercase tracking-[0.2em] text-gray-400 group-hover:text-brand-cyan transition-colors">{title}</h3>
+        <h3 className="text-[0.65rem] font-display font-bold uppercase tracking-[0.2em] text-gray-400 group-hover:text-brand-cyan transition-colors italic">{title}</h3>
         <div className="text-brand-cyan/80">
             {children}
         </div>
@@ -24,7 +24,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, unit, className, chil
       
       <div className="flex items-baseline relative z-10">
         <span className="text-4xl md:text-5xl font-display font-bold text-white neon-text tracking-tighter">{value}</span>
-        {unit && <span className="ml-2 text-xs font-mono font-medium text-gray-500 uppercase tracking-widest">{unit}</span>}
+        {unit && <span className="ml-2 text-xs font-mono font-bold text-gray-500 uppercase tracking-widest italic">{unit}</span>}
       </div>
 
       {/* Subtle background glow on hover */}

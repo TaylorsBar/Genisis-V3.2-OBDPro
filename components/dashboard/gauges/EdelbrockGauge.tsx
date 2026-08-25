@@ -1,5 +1,7 @@
 
-import React from 'react';
+import React, { useMemo } from 'react';
+import { motion, useTransform } from 'motion/react';
+import { useAnimatedValue } from '../../../hooks/useAnimatedValue';
 
 interface EdelbrockGaugeProps {
   label: string;
@@ -15,38 +17,30 @@ const EdelbrockGauge: React.FC<EdelbrockGaugeProps> = ({ label, value, unit, min
   const ANGLE_MIN = -135;
   const ANGLE_MAX = 135;
   const range = max - min;
-  const valueRatio = (Math.max(min, Math.min(value, max)) - min) / range;
-  const angle = ANGLE_MIN + valueRatio * (ANGLE_MAX - ANGLE_MIN);
+  
+  // Physics
+  const animatedValue = useAnimatedValue(value, { stiffness: 90, damping: 12, mass: 1 });
+  
+  const needleRotate = useTransform(animatedValue, (val) => {
+      const clampedVal = Math.max(min, Math.min(val, max));
+      const ratio = (clampedVal - min) / range;
+      return ANGLE_MIN + ratio * (ANGLE_MAX - ANGLE_MIN);
+  });
+
+  const displayText = useTransform(animatedValue, (val) => val.toFixed(0));
 
   const numTicks = isLarge ? 9 : 7;
 
-  return (
-    <div className="w-full h-full flex flex-col items-center justify-center">
-      <svg viewBox="0 0 200 200" className="w-full h-full filter drop-shadow-lg">
-        <defs>
-            <linearGradient id="brushedSteel" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#ddd" />
-                <stop offset="20%" stopColor="#999" />
-                <stop offset="50%" stopColor="#ccc" />
-                <stop offset="80%" stopColor="#999" />
-                <stop offset="100%" stopColor="#ddd" />
-            </linearGradient>
-            <radialGradient id="capGrad" cx="30%" cy="30%" r="70%">
-                <stop offset="0%" stopColor="#555" />
-                <stop offset="100%" stopColor="#111" />
-            </radialGradient>
-        </defs>
-
-        {/* Bezel and Face */}
+  // Static Elements
+  const staticElements = useMemo(() => (
+      <>
         <circle cx="100" cy="100" r="100" fill="url(#brushedSteel)" stroke="#555" strokeWidth="1" />
         <circle cx="100" cy="100" r="92" fill="var(--theme-gauge-face)" stroke="#222" strokeWidth="2" />
         
-        {/* Ticks and Labels */}
         {Array.from({ length: numTicks }).map((_, i) => {
             const tickValue = min + (range / (numTicks - 1)) * i;
             const tickRatio = (tickValue - min) / range;
             const tickAngle = ANGLE_MIN + tickRatio * (ANGLE_MAX - ANGLE_MIN);
-            
             const tickLength = i % (isLarge ? 1 : 2) === 0 ? 10 : 5;
             const showLabel = i % (isLarge ? 1 : 2) === 0;
 
@@ -67,27 +61,53 @@ const EdelbrockGauge: React.FC<EdelbrockGaugeProps> = ({ label, value, unit, min
                 </g>
             )
         })}
-        
         <text x="100" y={isLarge ? "60" : "70"} textAnchor="middle" fill="var(--theme-text-secondary)" fontSize={isLarge ? "14" : "12"} className="font-sans font-bold uppercase">{label}</text>
+        <text x="100" y={isLarge ? "165" : "150"} textAnchor="middle" fill="var(--theme-text-secondary)" fontSize="12" className="font-sans uppercase">{unit}</text>
+      </>
+  ), [min, max, numTicks, range, isLarge, label, unit, ANGLE_MIN, ANGLE_MAX]);
+
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center">
+      <svg viewBox="0 0 200 200" className="w-full h-full filter drop-shadow-lg">
+        <defs>
+            <linearGradient id="brushedSteel" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#ddd" />
+                <stop offset="20%" stopColor="#999" />
+                <stop offset="50%" stopColor="#ccc" />
+                <stop offset="80%" stopColor="#999" />
+                <stop offset="100%" stopColor="#ddd" />
+            </linearGradient>
+            <radialGradient id="capGrad" cx="30%" cy="30%" r="70%">
+                <stop offset="0%" stopColor="#555" />
+                <stop offset="100%" stopColor="#111" />
+            </radialGradient>
+        </defs>
+
+        {staticElements}
 
         {/* Digital Readout */}
-        <text x="100" y={isLarge ? "145" : "135"} textAnchor="middle" fill="var(--theme-gauge-text)" fontSize={isLarge ? "40" : "30"} className="font-display font-bold">
-            {value.toFixed(0)}
-        </text>
-        <text x="100" y={isLarge ? "165" : "150"} textAnchor="middle" fill="var(--theme-text-secondary)" fontSize="12" className="font-sans uppercase">{unit}</text>
+        <motion.text 
+            x="100" y={isLarge ? "145" : "135"} 
+            textAnchor="middle" 
+            fill="var(--theme-gauge-text)" 
+            fontSize={isLarge ? "40" : "30"} 
+            className="font-display font-bold"
+        >
+            {displayText}
+        </motion.text>
 
         {/* Needle */}
-        <g 
+        <motion.g 
             style={{ 
-                transform: `rotate(${angle}deg)`, 
-                transformOrigin: "100px 100px", 
-                transition: "transform 0.1s ease-out", 
-                willChange: "transform" 
+                transformOrigin: '100px 100px',
+                transformBox: 'view-box',
+                rotate: needleRotate,
+                willChange: 'transform'
             }}
         >
             <path d="M 100 110 L 100 20" stroke="var(--theme-needle-color)" strokeWidth="3" strokeLinecap="round" />
             <circle cx="100" cy="100" r="8" fill="url(#capGrad)" stroke="#333" strokeWidth="1" />
-        </g>
+        </motion.g>
       </svg>
     </div>
   );

@@ -1,10 +1,16 @@
 {
-  "name": "CartelWorx Comp",
-  "description": "Production ready functional prototype ",
+  "name": "CartelWorx Elite Pro ASI",
+  "description": "Professional racing platform with Genesis ASI Neural Co-Pilot. Features autonomous subsystem control, advanced kinematic state fusion, and high-frequency WebGPU math kernels.",
   "requestFramePermissions": [
     "microphone",
     "geolocation",
     "camera",
-    "bluetooth"
+    "bluetooth",
+    "accelerometer",
+    "gyroscope",
+    "magnetometer"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
 }
