@@ -23,9 +23,6 @@ import GlobalAssistant from './components/GlobalAssistant';
 const MainLayout: React.FC = () => {
   const location = useLocation();
   
-  // PERFORMANCE FIX: Select ONLY the startSimulation action.
-  // Using specific selectors prevents this component from re-rendering 
-  // when the vehicle data (which updates 20Hz) changes.
   const startSimulation = useVehicleStore(state => state.startSimulation);
   const setContext = useAIStore(state => state.setContext);
 
@@ -33,7 +30,6 @@ const MainLayout: React.FC = () => {
     startSimulation();
   }, [startSimulation]);
 
-  // Update AI Context on route change
   useEffect(() => {
       const routeName = location.pathname === '/' ? 'Cockpit Dashboard' : 
                         location.pathname.replace('/', '').replace('-', ' ').toUpperCase();
@@ -82,10 +78,10 @@ const BootSequence: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
 
     useEffect(() => {
         const steps = [
-            setTimeout(() => setStep(1), 500),  // Kernel
-            setTimeout(() => setStep(2), 1200), // Modules
-            setTimeout(() => setStep(3), 2000), // GUI
-            setTimeout(() => onComplete(), 2800) // Finish
+            setTimeout(() => setStep(1), 500),
+            setTimeout(() => setStep(2), 1200),
+            setTimeout(() => setStep(3), 2000),
+            setTimeout(() => onComplete(), 2800)
         ];
         return () => steps.forEach(clearTimeout);
     }, [onComplete]);
@@ -101,9 +97,9 @@ const BootSequence: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
                     <div className="h-full bg-brand-cyan transition-all duration-500 ease-out" style={{ width: `${(step/3)*100}%` }}></div>
                 </div>
                 <div className="space-y-1 text-gray-400">
-                    {step >= 0 && <div className="text-white">> Mounting Kernel... OK</div>}
-                    {step >= 1 && <div className="text-white">> Loading Drivers [ECU, VIS, NAV]... OK</div>}
-                    {step >= 2 && <div className="text-brand-cyan">> Initializing Graphic Interface...</div>}
+                    {step >= 0 && <div className="text-white">{'>'} Mounting Kernel... OK</div>}
+                    {step >= 1 && <div className="text-white">{'>'} Loading Drivers [ECU, VIS, NAV]... OK</div>}
+                    {step >= 2 && <div className="text-brand-cyan">{'>'} Initializing Graphic Interface...</div>}
                 </div>
             </div>
         </div>
