@@ -1,6 +1,6 @@
 {
-  "name": "CartelWorx Comp",
-  "description": "Production ready functional prototype ",
+  "name": "Genesis OS",
+  "description": "Functional prototype — digital racedash, OBD telemetry, dyno lab. Not production-certified diagnostics.",
   "requestFramePermissions": [
     "microphone",
     "geolocation",

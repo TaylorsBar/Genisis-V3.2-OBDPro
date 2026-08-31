@@ -1,20 +1,44 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Genesis OS v3.2
 
-# Run and deploy your AI Studio app
+Digital racedash, OBD-II telemetry (Web Bluetooth ELM327), dyno lab, and KC AI co-pilot.
 
-This contains everything you need to run your app locally.
+**Status:** functional prototype — not certified diagnostics or production ECU tooling.
 
-View your app in AI Studio: https://ai.studio/apps/drive/12yv1dqt1PgLGsLSsirn9UeMl5CfZE2MI
+## Quick start
 
-## Run Locally
+```bash
+npm install
+cp .env.example .env   # optional: GEMINI_API_KEY for AI features
+npm run dev            # http://localhost:3000
+```
 
-**Prerequisites:**  Node.js
+## Scripts
 
+| Command | Purpose |
+|---------|---------|
+| `npm run dev` | Vite dev server |
+| `npm run build` | Typecheck + production bundle → `dist/` |
+| `npm run preview` | Serve `dist/` via Vite |
+| `npm start` | Express static server (serves `dist/` if present) |
+| `npm run typecheck` | `tsc --noEmit` |
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Themes
+
+Appearance → **Minimalist EV** is the Genesis Digital Racedash layout (live telemetry channels; SIM vs LIVE badge).
+
+## OBD
+
+Requires a browser with Web Bluetooth (Chrome/Edge on desktop/Android). Connect an ELM327-compatible adapter from the sidebar.
+
+## Docker
+
+```bash
+docker build -t genesis-os .
+docker run -p 8080:8080 genesis-os
+```
+
+## Honesty notes
+
+- Hedera ledger UI is demo/mock until a real client is wired.
+- EV SOC / power on the minimalist dash use OBD proxies until manufacturer EV PIDs are mapped.
+- Gemini API key in the client bundle is a prototype compromise — move server-side before public deploy.
