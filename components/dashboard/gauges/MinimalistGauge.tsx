@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { useAnimatedValue } from '../../hooks/useAnimatedValue';
+import { useAnimatedValue } from '../../../hooks/useAnimatedValue';
 
 interface MinimalistGaugeProps {
     value: number;
@@ -42,11 +42,9 @@ const MinimalistGauge: React.FC<MinimalistGaugeProps> = ({ value, min, max, unit
                     </filter>
                 </defs>
 
-                {/* Bezel and Face */}
                 <circle cx={center} cy={center} r={radius} fill="var(--theme-gauge-bezel)" />
                 <circle cx={center} cy={center} r={radius * 0.95} fill="var(--theme-gauge-face)" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
 
-                {/* Ticks */}
                 {Array.from({ length: config.ticks }).map((_, i) => {
                     const tickAngle = ANGLE_MIN + (i / (config.ticks - 1)) * angleRange;
                     const isMajor = size !== 'small' || i === 0 || i === config.ticks - 1;
@@ -64,7 +62,6 @@ const MinimalistGauge: React.FC<MinimalistGaugeProps> = ({ value, min, max, unit
                     );
                 })}
                 
-                 {/* Needle */}
                 <g transform={`rotate(${angle} ${center} ${center})`} style={{ transition: 'transform 0.1s ease-out' }}>
                     <path 
                         d={`M ${center} ${center + radius * 0.15} L ${center} ${radius * 0.1}`}
