@@ -1,5 +1,5 @@
 import React from 'react';
-import { useAnimatedValue } from '../../hooks/useAnimatedValue';
+import { useAnimatedValue } from '../../../hooks/useAnimatedValue';
 
 interface BarMeterProps {
   label: string;
