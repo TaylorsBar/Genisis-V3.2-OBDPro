@@ -1,5 +1,5 @@
 import React from 'react';
-import { useAnimatedValue } from '../../hooks/useAnimatedValue';
+import { useAnimatedValue } from '../../../hooks/useAnimatedValue';
 
 interface HaltechSideBarGaugeProps {
     label: string;
@@ -18,8 +18,6 @@ const HaltechSideBarGauge: React.FC<HaltechSideBarGaugeProps> = ({ label, value,
     const activeSegments = Math.round(valueRatio * NUM_SEGMENTS);
     const isLeft = orientation === 'left';
 
-    const segmentPath = (y: number, height: number) => `M 10 ${y} C 20 ${y}, 25 ${y + height * 0.2}, 25 ${y + height / 2} S 20 ${y + height}, 10 ${y + height}`;
-
     return (
         <div className="w-full max-w-[200px] aspect-[1/3] relative font-sans">
             <svg viewBox="0 0 100 300" className="w-full h-full">
@@ -31,15 +29,10 @@ const HaltechSideBarGauge: React.FC<HaltechSideBarGaugeProps> = ({ label, value,
                     </linearGradient>
                 </defs>
                 <g transform={isLeft ? '' : 'translate(100, 0) scale(-1, 1)'}>
-                    {/* Bezel */}
                     <path d="M 30 10 C 40 10, 50 20, 50 40 L 50 260 C 50 280, 40 290, 30 290" fill="none" stroke="url(#bezel-grad)" strokeWidth="3" />
                     <path d="M 50 40 L 20 40 C 5 40, 5 60, 20 60 L 50 60" fill="none" stroke="url(#bezel-grad)" strokeWidth="3" />
                     <path d="M 50 260 L 20 260 C 5 260, 5 240, 20 240 L 50 240" fill="none" stroke="url(#bezel-grad)" strokeWidth="3" />
-                    
-                    {/* Background track */}
                     <rect x="24" y="55" width="12" height="190" fill="#1a1a1a" />
-
-                    {/* Segments */}
                     {Array.from({ length: NUM_SEGMENTS }).map((_, i) => {
                          const y = 245 - (i + 1) * 12;
                          const isActive = i < activeSegments;
