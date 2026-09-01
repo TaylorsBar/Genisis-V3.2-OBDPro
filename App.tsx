@@ -20,6 +20,7 @@ import { TelemetryOverlay } from './components/dashboard/TelemetryOverlay';
 import { GlobalToastNotification } from './components/GlobalToastNotification';
 import { HPTunersDiagnosticTool } from './components/diagnostics/HPTunersDiagnosticTool';
 import { APIProvider } from '@vis.gl/react-google-maps';
+import { Menu } from 'lucide-react';
 
 const GOOGLE_MAPS_KEY = process.env.GOOGLE_MAPS_PLATFORM_KEY || '';
 const HAS_VALID_MAPS_KEY = Boolean(GOOGLE_MAPS_KEY) && GOOGLE_MAPS_KEY !== 'YOUR_API_KEY';
@@ -57,7 +58,7 @@ const GlobalRedlineAlarm = React.memo(() => {
 const MainLayout: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { isImmersive, setIsImmersive } = useContext(AppearanceContext);
+  const { isImmersive, setIsImmersive, setIsSideMenuOpen } = useContext(AppearanceContext);
   const containerRef = useRef<HTMLDivElement>(null);
   const { hpTunersVisible, setHpTunersVisible } = useUIStore();
   
@@ -139,8 +140,9 @@ const MainLayout: React.FC = () => {
       setContext(routeName);
   }, [location.pathname, setContext]);
 
-  // Maximize edge-to-edge screen real estate
-  const isFullScreenRoute = true; // Set all to fullscreen to avoid padding and page headers
+  // Keep the dedicated HUD edge-to-edge while preserving navigation and
+  // hardware status on the rest of the application.
+  const isFullScreenRoute = location.pathname === '/hud' || isImmersive;
   const mainPadding = 'p-0 pb-0';
   const showPageHeader = false;
   const globalDimmingClass = (cognitiveState?.uiRegulationActive && cognitiveState?.selectedTask === 'welding') ? 'brightness-50 saturate-75 backdrop-blur-sm transition-all duration-1000' : 'transition-all duration-500';
@@ -162,7 +164,20 @@ const MainLayout: React.FC = () => {
        
        <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
         {/* Header Logic */}
-        {location.pathname !== '/hud' && !isFullScreenRoute && <SystemStatusBar />}
+        {!isFullScreenRoute ? (
+            <SystemStatusBar />
+        ) : (
+            <div className="absolute top-3 left-3 z-[100]">
+                <button
+                    type="button"
+                    onClick={() => setIsSideMenuOpen(true)}
+                    className="p-2.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/20 text-white/80 hover:text-white hover:bg-black/80 transition-all shadow-2xl active:scale-95"
+                    aria-label="Open navigation menu"
+                >
+                    <Menu className="w-5 h-5" />
+                </button>
+            </div>
+        )}
         
         {!isImmersive && location.pathname !== '/' && location.pathname !== '/race-pack' && location.pathname !== '/hud' && (
             <div className="w-full shrink-0 relative z-20 bg-black overflow-hidden border-b border-warning/10 border-white/5">

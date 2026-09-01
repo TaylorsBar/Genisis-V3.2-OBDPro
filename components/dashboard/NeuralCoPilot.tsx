@@ -121,6 +121,23 @@ export const NeuralCoPilot: React.FC = () => {
                 <div ref={chatEndRef} />
             </div>
 
+            {coPilot.actionProposals.length > 0 && (() => {
+                const proposal = coPilot.actionProposals.at(-1)!;
+                return (
+                    <div className="px-4 py-3 border-t border-amber-400/20 bg-amber-400/5 flex items-start gap-3">
+                        <ShieldAlert className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                            <div className="text-[9px] font-black tracking-[0.18em] text-amber-200 uppercase">
+                                Staged intent · {proposal.kind.replace(/_/g, ' ')}
+                            </div>
+                            <div className="text-[8px] font-mono text-amber-100/60 mt-1 leading-relaxed">
+                                {proposal.reason} No ECU command was sent.
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
             {/* Input Area */}
             <div className="p-4 border-t border-white/5 bg-[#0A0A0A] relative shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">
                 <div className="flex gap-0">

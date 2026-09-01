@@ -2,7 +2,9 @@ import { assertFails, assertSucceeds, initializeTestEnvironment, RulesTestEnviro
 import * as fs from 'fs';
 import { beforeAll, afterAll, it, describe } from 'vitest';
 
-describe("Karapiro Cartel Speed Shop - Firestore Rules", () => {
+const describeWithFirestore = process.env.FIRESTORE_EMULATOR_HOST ? describe : describe.skip;
+
+describeWithFirestore("Karapiro Cartel Speed Shop - Firestore Rules", () => {
     let testEnv: RulesTestEnvironment;
 
     beforeAll(async () => {

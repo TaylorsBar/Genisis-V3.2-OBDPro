@@ -1,4 +1,5 @@
 import { ObdService } from "./ObdService";
+import { commercialControlDenial } from './CommercialReleasePolicy';
 
 export interface UdsOverrideParameter {
   didHex: string; // e.g. "F101"
@@ -125,7 +126,7 @@ export class UdsOverrideService {
     paramKey: keyof typeof UDS_OVERRIDE_CATALOG,
     value: number,
     obdService?: ObdService
-  ): Promise<{ success: boolean; rawCommandSent: string; valueApplied: number; message: string }> {
+  ): Promise<{ success: boolean; transmitted: false; rawCommandSent: string; valueApplied: number; message: string }> {
     const param = UDS_OVERRIDE_CATALOG[paramKey];
     if (!param) {
       throw new Error(`Unknown UDS parameter key: ${paramKey}`);
@@ -144,21 +145,18 @@ export class UdsOverrideService {
     // UDS Service 0x2E Command: "2E" + DID + Data
     const rawCommand = `2E${param.didHex}${hexPayload}`;
 
-    if (obdService && typeof (obdService as any).sendRawCommand === "function") {
-      try {
-        await (obdService as any).sendRawCommand(rawCommand);
-      } catch (err: any) {
-        console.warn(`[UDS 0x2E] Web Bluetooth command send notice: ${err.message}`);
-      }
+    if (obdService) {
+      throw new Error(commercialControlDenial('UDS parameter transmission'));
     }
 
     this.activeOverrides[paramKey] = value;
 
     return {
       success: true,
+      transmitted: false,
       rawCommandSent: rawCommand,
       valueApplied: value,
-      message: `Successfully executed UDS 0x2E override for [${param.name}] -> ${value} ${param.unit} (Hex Payload: ${rawCommand})`
+      message: `Staged UDS 0x2E payload for [${param.name}] -> ${value} ${param.unit}. No vehicle command was sent. (Hex Payload: ${rawCommand})`
     };
   }
 
@@ -170,7 +168,7 @@ export class UdsOverrideService {
     address: number,
     data: Uint8Array,
     obdService?: ObdService
-  ): Promise<{ success: boolean; hexAddress: string; bytesWritten: number; rawCommandSent: string }> {
+  ): Promise<{ success: boolean; transmitted: false; hexAddress: string; bytesWritten: number; rawCommandSent: string }> {
     // Fail Closed Safety Guard: Validate address range
     const isAddressSafe = SAFE_RAM_RANGES.some(range => address >= range.start && address + data.length <= range.end);
     if (!isAddressSafe) {
@@ -188,16 +186,13 @@ export class UdsOverrideService {
     const lenHex = data.length.toString(16).padStart(4, "0").toUpperCase();
     const rawCommand = `3D34${hexAddress}${lenHex}${hexData}`;
 
-    if (obdService && typeof (obdService as any).sendRawCommand === "function") {
-      try {
-        await (obdService as any).sendRawCommand(rawCommand);
-      } catch (err: any) {
-        console.warn(`[RAM Write 0x3D] Web Bluetooth send notice: ${err.message}`);
-      }
+    if (obdService) {
+      throw new Error(commercialControlDenial('UDS memory-write transmission'));
     }
 
     return {
       success: true,
+      transmitted: false,
       hexAddress: `0x${hexAddress}`,
       bytesWritten: data.length,
       rawCommandSent: rawCommand
