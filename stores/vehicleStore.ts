@@ -836,7 +836,14 @@ export const useVehicleStore = create<VehicleStoreState>()(
                             gForceZ: finalGForceZ,
                             yawRate: isObd && lastObdData?.yawRate !== undefined ? lastObdData.yawRate : ekf.getEstimatedYawRate(),
                             brakeTemp: newBrakeTemp,
-                            source: dataSourceType === 'live_obd' ? 'live_obd' : 'fused_ekf',
+                            // Never allow the demo generator to masquerade as fused sensor evidence.
+                            // Downstream coaching and certification lanes use this discriminator
+                            // to exclude simulated values from live claims.
+                            source: dataSourceType === 'live_obd'
+                                ? 'live_obd'
+                                : dataSourceType === 'fused_ekf'
+                                    ? 'fused_ekf'
+                                    : 'sim',
                             steeringAngle: finalSteering,
                         };
 
@@ -1947,4 +1954,3 @@ export const useVehicleStore = create<VehicleStoreState>()(
         }
     )
 );
-
