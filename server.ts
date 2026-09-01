@@ -2,6 +2,10 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import * as geminiServer from "./services/geminiServer";
+import {
+  createGeminiLiveTokenHandler,
+  verifyFirebaseBearerToken,
+} from "./services/ai/GeminiLiveTokenRoute";
 
 async function startServer() {
   const app = express();
@@ -13,6 +17,10 @@ async function startServer() {
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });
+
+  app.post("/api/gemini/live-token", createGeminiLiveTokenHandler({
+    verifyBearerToken: verifyFirebaseBearerToken,
+  }));
 
   app.post("/api/gemini/execute", async (req, res) => {
     const { functionName, args } = req.body;
