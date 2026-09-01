@@ -7,6 +7,7 @@ import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { useTextToSpeech } from '../hooks/useTextToSpeech';
 import { AppearanceContext, Theme, ColorPalette } from '../contexts/AppearanceContext';
 import MicrophoneIcon from './icons/MicrophoneIcon';
+import { brokerCopilotAction } from '../services/ai/CopilotActionBroker';
 
 const NeuralOrb: React.FC<{ state: string }> = ({ state }) => {
     return (
@@ -60,10 +61,9 @@ export const GlobalAssistant: React.FC = () => {
     // Access full store for Deep Context
     const startLogging = useVehicleStore(state => state.startLogging);
     const stopLogging = useVehicleStore(state => state.stopLogging);
-    const primeFuelSystem = useVehicleStore(state => state.primeFuelSystem);
     const connectObd = useVehicleStore(state => state.connectObd);
-    const clearVehicleFaults = useVehicleStore(state => state.clearVehicleFaults);
-    const setBoostTarget = useVehicleStore(state => state.setBoostTarget);
+    const scanVehicle = useVehicleStore(state => state.scanVehicle);
+    const stageCopilotAction = useVehicleStore(state => state.stageCopilotAction);
     
     // Access UI Context
     const { theme, setTheme, colorPalette, setColorPalette, setIsImmersive } = useContext(AppearanceContext);
@@ -78,7 +78,7 @@ export const GlobalAssistant: React.FC = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    const executeAction = async (intent: string, payload?: any) => {
+    const executeAction = async (intent: string, payload?: any): Promise<string | undefined> => {
         switch (intent) {
             case 'NAVIGATE':
                 if (payload?.target) {
@@ -101,13 +101,19 @@ export const GlobalAssistant: React.FC = () => {
                 }
                 break;
             case 'VEHICLE_CONTROL':
-                const action = payload?.action;
-                if (action === 'start_logging') startLogging();
-                else if (action === 'stop_logging') stopLogging();
-                else if (action === 'prime_fuel') primeFuelSystem();
-                else if (action === 'connect_obd') connectObd();
-                else if (action === 'clear_faults') clearVehicleFaults();
-                else if (action === 'set_boost' && payload.value) setBoostTarget(Number(payload.value));
+                const proposal = brokerCopilotAction(
+                    String(payload?.action ?? payload?.target ?? ''),
+                    payload?.value,
+                );
+                if (proposal.authority === 'STAGE_ONLY') {
+                    stageCopilotAction(proposal);
+                    return `${proposal.kind.replace(/_/g, ' ')} staged for operator review. No vehicle command was sent.`;
+                }
+                if (proposal.authority === 'BLOCKED') return proposal.reason;
+                if (proposal.kind === 'START_LOGGING') startLogging();
+                else if (proposal.kind === 'STOP_LOGGING') await stopLogging();
+                else if (proposal.kind === 'CONNECT_OBD') await connectObd();
+                else if (proposal.kind === 'SCAN_DIAGNOSTICS') await scanVehicle();
                 break;
             default:
                 break;
@@ -136,14 +142,18 @@ export const GlobalAssistant: React.FC = () => {
             
             const response = await generateCopilotResponse(userMsg, contextPayload);
             
+            let actionNote: string | undefined;
             if (response.intent && response.intent !== 'GENERAL' && response.actionPayload) {
-                await executeAction(response.intent, response.actionPayload);
+                actionNote = await executeAction(response.intent, response.actionPayload);
             }
-            
-            addMessage('model', typeof response === 'string' ? response : (response.speech || 'Action complete.'));
+
+            const responseText = typeof response === 'string'
+                ? response
+                : [response.speech, actionNote].filter(Boolean).join(' ') || 'Request processed.';
+            addMessage('model', responseText);
             
             setState('speaking');
-            speak(typeof response === 'string' ? response : (response.speech || 'Action complete.'), () => setState('idle'));
+            speak(responseText, () => setState('idle'));
             
         } catch (error) {
             console.error(error);

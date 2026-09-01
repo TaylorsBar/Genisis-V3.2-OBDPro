@@ -3,6 +3,7 @@ import { calculateCRC32, prepareChunkedData } from "./FlashUtils";
 import { IFlashTransport } from "./FlashTransport";
 import { IsoTpLayer } from "./IsoTpLayer";
 import { J2534Driver } from "./J2534Driver";
+import { commercialControlDenial } from './CommercialReleasePolicy';
 
 /**
  * FlashManager
@@ -41,6 +42,16 @@ export class FlashManager {
         algoId: number = 0x401, // Default to Bosch ME9 for VQ37
         onProgress: (p: FlashProgress) => void
     ): Promise<boolean> {
+        void binaryData;
+        void algoId;
+        onProgress({
+            stage: commercialControlDenial('ECU flashing'),
+            progress: 0,
+            complete: true,
+            error: 'CONTROL_AUTHORITY_READ_ONLY',
+        });
+        return false;
+        /* Research implementation retained below for isolated migration.
         try {
             // 0. Initialize Interface
             onProgress({ stage: "Initializing Hardware Interface...", progress: 5, complete: false });
@@ -125,7 +136,7 @@ export class FlashManager {
             return false;
         } finally {
             this.transport.disconnect();
-        }
+        } */
     }
 
     /**

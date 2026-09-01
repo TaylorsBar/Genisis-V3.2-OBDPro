@@ -27,6 +27,8 @@ import { ChecksumService, EcuType } from '../services/ChecksumService';
 import { UdsSecurityService, EcuVariant } from '../services/UdsSecurityService';
 import { parseUdsResponse, UdsNrc } from '../lib/UdsUtils';
 import { generateCopilotResponse } from '../services/geminiService';
+import { assessDiagnosticCommand, commercialControlDenial } from '../services/CommercialReleasePolicy';
+import { brokerCopilotAction, CopilotActionProposal } from '../services/ai/CopilotActionBroker';
 
 const createMap = (base: number) => Array.from({length: 16}, () => Array(16).fill(base));
 
@@ -212,6 +214,7 @@ interface VehicleStoreState {
         messages: { id: string; role: 'ai' | 'user' | 'system'; text: string; timestamp: number; toolCalls?: any[] }[];
         isThinking: boolean;
         lastVoicePrompt?: string;
+        actionProposals: CopilotActionProposal[];
     };
     rlTraining?: { epsilon: number };
     cognitiveState: CognitiveState;
@@ -276,6 +279,7 @@ interface VehicleStoreState {
     writeKessParameter: (id: string, val: number) => Promise<boolean>;
     loadDatabases: () => Promise<void>;
     sendCoPilotMessage: (text: string) => Promise<void>;
+    stageCopilotAction: (proposal: CopilotActionProposal) => void;
     clearCoPilotLog: () => void;
     setLoggingConfig: (config: Partial<LoggingConfig>) => void;
     readECUMapping: (mappingType: TuningTableType) => Promise<number[][] | null>;
@@ -404,7 +408,8 @@ export const useVehicleStore = create<VehicleStoreState>()(
                 messages: [
                     { id: '1', role: 'ai', text: 'Genesis v5.5 Initialized. Neural Link STABLE. Systems within nominal range. Ready for high-frequency calibration.', timestamp: Date.now() }
                 ],
-                isThinking: false
+                isThinking: false,
+                actionProposals: []
             },
             cognitiveState: {
                 selectedTask: 'torque',
@@ -1190,8 +1195,12 @@ export const useVehicleStore = create<VehicleStoreState>()(
                 ]);
                 set({ dtcs: codes, readiness, isScanning: false, hasActiveFault: codes.length > 0 }); 
             },
-            clearVehicleFaults: async () => { if (!sdkInstance) return; await sdkInstance.clearFaults(); set({ dtcs: [], hasActiveFault: false }); },
-            primeFuelSystem: async () => { if (!sdkInstance) return; set({ isPriming: true }); await sdkInstance.primeFuelSystem(); setTimeout(() => set({ isPriming: false }), 5000); },
+            clearVehicleFaults: async () => {
+                useUIStore.getState().showToast(commercialControlDenial('DTC clearing'), 'warning');
+            },
+            primeFuelSystem: async () => {
+                useUIStore.getState().showToast(commercialControlDenial('Fuel-system active test'), 'warning');
+            },
             calibrateSensors: async () => {
                 set({ isCalibrating: true, calibrationProgress: 0, calibrationStatus: 'Initializing IMU Zero-Point...' });
                 
@@ -1294,43 +1303,15 @@ export const useVehicleStore = create<VehicleStoreState>()(
                 }
             },
             requestSecurityAccess: async (variant: EcuVariant) => {
-                if (!sdkInstance) return false;
-                set(s => ({ uds: { ...s.uds, securityLog: ["Starting UDS Security Protocol (0x27)..."] } }));
-                
-                const result = await UdsSecurityService.executeSecuritySequence(sdkInstance.neuralLink.obd, variant, (msg) => {
-                    set(s => ({ uds: { ...s.uds, securityLog: [...s.uds.securityLog, msg] } }));
-                });
-
-                if (result.success) {
-                    set(s => ({ 
-                        uds: { 
-                            ...s.uds, 
-                            securityAccess: true,
-                            lastResponseCode: 0x67
-                        } 
-                    }));
-                } else {
-                    set(s => ({ 
-                        uds: { 
-                            ...s.uds, 
-                            securityAccess: false,
-                            lastResponseCode: 0x7F
-                        } 
-                    }));
-                }
-                return result.success;
+                void variant;
+                const denial = commercialControlDenial('UDS security access');
+                set(s => ({ uds: { ...s.uds, securityAccess: false, securityLog: [denial] } }));
+                return false;
             },
 
             setDiagnosticSession: async (session: UdsSession) => {
-                if (!sdkInstance) return false;
-                const cmd = `10 ${session.toString(16).padStart(2, '0')}`;
-                const res = await get().executeRawCommand(cmd);
-                const parsed = parseUdsResponse(res);
-                
-                if (parsed.success) {
-                    set(s => ({ uds: { ...s.uds, session } }));
-                    return true;
-                }
+                void session;
+                set(s => ({ uds: { ...s.uds, session: UdsSession.Default, securityAccess: false } }));
                 return false;
             },
 
@@ -1400,35 +1381,14 @@ export const useVehicleStore = create<VehicleStoreState>()(
             },
 
             establishKessLink: async () => {
-                const bridge = HardwareBridgeService.getInstance();
-                set({ obdState: ObdConnectionState.HardwareHandshake, hardwareLog: ["Inhibiting standard OBD-II polling...", "Requesting USB serial access..."] });
-                
-                const success = await bridge.establishKessLink((msg) => {
-                    set(s => ({ hardwareLog: [...s.hardwareLog, msg] }));
-                });
-
-                if (success) {
-                    const status = bridge.getStatus();
-                    set({ 
-                        hardwareLink: status, 
-                        obdState: ObdConnectionState.Connected,
-                        protocol: `K-Suite v2 (${status.protocol})`
-                    });
-                } else {
-                    set({ obdState: ObdConnectionState.Error });
-                }
+                set({ hardwareLog: [commercialControlDenial('KESS write-capable link')] });
             },
 
             writeKessParameter: async (id: string, val: number) => {
-                const bridge = HardwareBridgeService.getInstance();
-                set(s => ({ hardwareLog: [...s.hardwareLog, `TX: WRITE_PARAM [${id}] -> ${val}`] }));
-                const success = await bridge.writeParameter(id, val);
-                if (success) {
-                    set(s => ({ hardwareLog: [...s.hardwareLog, `RX: ACK (WRITE_SUCCESS)`] }));
-                } else {
-                    set(s => ({ hardwareLog: [...s.hardwareLog, `RX: NACK (WRITE_FAILED)`] }));
-                }
-                return success;
+                void id;
+                void val;
+                set(s => ({ hardwareLog: [...s.hardwareLog, commercialControlDenial('KESS parameter write')] }));
+                return false;
             },
 
             loadDatabases: async () => {
@@ -1625,12 +1585,18 @@ export const useVehicleStore = create<VehicleStoreState>()(
                 set(s => ({ dyno: { ...s.dyno, runs: s.dyno.runs.filter(r => r.id !== id) } }));
             },
             executeRawCommand: async (cmd: string) => {
+                const decision = assessDiagnosticCommand(cmd);
+                if (!decision.allowed) {
+                    const denial = `READ_ONLY REJECTION: ${decision.reason}`;
+                    set(s => ({ commsLog: [{ time: Date.now(), type: 'ERR' as const, bytes: denial }, ...s.commsLog].slice(0, 50) }));
+                    return denial;
+                }
                 if (!sdkInstance) {
                     set(s => ({ commsLog: [{ time: Date.now(), type: 'ERR' as const, bytes: 'ERROR: Not connected' }, ...s.commsLog].slice(0, 50) }));
                     return "ERROR: Not connected";
                 }
                 
-                const cleanCmd = cmd.replace(/\s+/g, '').toUpperCase();
+                const cleanCmd = decision.normalizedCommand;
                 set(s => ({ commsLog: [{ time: Date.now(), type: 'REQ' as const, bytes: cleanCmd }, ...s.commsLog].slice(0, 50) }));
                 
                 const res = await sdkInstance.executeRawCommand(cleanCmd);
@@ -1668,6 +1634,11 @@ export const useVehicleStore = create<VehicleStoreState>()(
                 sdkInstance?.neuralLink.obd.stopSniffing();
             },
             performFlashTransfer: async (data: Uint8Array, address: number): Promise<boolean> => {
+                void data;
+                void address;
+                set(s => ({ hardwareLog: [...s.hardwareLog, commercialControlDenial('Flash transfer')] }));
+                return false;
+                /* Research implementation retained below for isolated migration.
                 const { latestData, executeRawCommand } = get();
                 
                 // 1. DETERMINISTIC SAFETY LAYER
@@ -1709,7 +1680,7 @@ export const useVehicleStore = create<VehicleStoreState>()(
 
                 // 4. REQUEST TRANSFER EXIT (0x37)
                 await executeRawCommand('37');
-                return true;
+                return true; */
             },
             readDid: async (did: string): Promise<string | null> => {
                 const { executeRawCommand } = get();
@@ -1722,6 +1693,11 @@ export const useVehicleStore = create<VehicleStoreState>()(
                 return null;
             },
             writeDid: async (did: string, data: string): Promise<boolean> => {
+                void did;
+                void data;
+                set(s => ({ hardwareLog: [...s.hardwareLog, commercialControlDenial('UDS DID write')] }));
+                return false;
+                /* Research implementation retained below for isolated migration.
                 const { latestData, uds, executeRawCommand } = get();
                 
                 // 1. PHYSICAL SAFETY CHECK
@@ -1753,7 +1729,7 @@ export const useVehicleStore = create<VehicleStoreState>()(
                     set(s => ({ hardwareLog: [...s.hardwareLog, "ECU REFUSAL: Physical conditions (RPM/Speed/Voltage) not met for write."] }));
                 }
                 
-                return false;
+                return false; */
             },
             readMemoryByAddress: async (address: number, sizeBytes: number): Promise<Uint8Array | null> => {
                 return await sdkInstance?.readMemoryByAddress(address, sizeBytes) ?? null;
@@ -1775,9 +1751,18 @@ export const useVehicleStore = create<VehicleStoreState>()(
                 return table;
             },
             executeRoutine: async (routineId: string, payload: string = ''): Promise<string | null> => {
-                const { executeRawCommand } = get();
-                const response = await executeRawCommand(`31 01 ${routineId.padStart(4, '0')} ${payload}`);
-                return response.startsWith('71') ? response : null;
+                void routineId;
+                void payload;
+                set(s => ({ hardwareLog: [...s.hardwareLog, commercialControlDenial('UDS active routine')] }));
+                return null;
+            },
+            stageCopilotAction: (proposal: CopilotActionProposal) => {
+                set(s => ({
+                    coPilot: {
+                        ...s.coPilot,
+                        actionProposals: [...s.coPilot.actionProposals, proposal].slice(-50),
+                    },
+                }));
             },
             sendCoPilotMessage: async (text: string) => {
                 const id = Math.random().toString(36).substring(7);
@@ -1816,81 +1801,61 @@ export const useVehicleStore = create<VehicleStoreState>()(
 
                     if (aiResult.actionPayload && aiResult.actionPayload.target) {
                         const target = aiResult.actionPayload.target.toLowerCase();
-                        const val = aiResult.actionPayload.value;
+                        const proposal = brokerCopilotAction(target, aiResult.actionPayload.value);
 
-                        if (target.includes("boost") || target === "tuning_action") {
-                            const currentBoost = get().tuning.boostTarget;
-                            const newBoost = val ? parseFloat(String(val)) : Math.min(22, currentBoost + 2);
-                            set(s => ({ tuning: { ...s.tuning, boostTarget: newBoost } }));
-                        } else if (target.includes("diagnose") || target.includes("scan") || target.includes("fault")) {
+                        if (proposal.authority === 'STAGE_ONLY') {
+                            get().stageCopilotAction(proposal);
+                            aiResponse += ` ${proposal.kind.replace(/_/g, ' ')} was staged for operator review; no vehicle command was sent.`;
+                        } else if (proposal.authority === 'BLOCKED') {
+                            aiResponse += ` ${proposal.reason}`;
+                        } else if (proposal.kind === 'SCAN_DIAGNOSTICS') {
                             get().scanVehicle();
-                        } else if (target.includes("launch")) {
-                            set(s => ({ launchControl: { ...s.launchControl, enabled: true } }));
-                        } else if (target.includes("calibrate") || target.includes("sensor")) {
-                            get().calibrateSensors();
-                        } else if (target.includes("log") || target.includes("start_logging")) {
+                        } else if (proposal.kind === 'CALIBRATE_SENSORS') {
+                            if (latestData.speed <= 0.5) get().calibrateSensors();
+                            else aiResponse += ' Sensor calibration was not started while the vehicle is moving.';
+                        } else if (proposal.kind === 'START_LOGGING') {
                             get().startLogging();
-                        } else if (target.includes("dyno")) {
-                            get().startDynoRun();
-                        } else if (target.includes("anti") || target.includes("lag") || target === "als") {
-                            get().toggleAls();
-                        } else if (target.includes("rev") || target.includes("limit")) {
-                            const numericVal = val ? parseInt(String(val), 10) : null;
-                            if (numericVal) {
-                                set(s => ({ vehicleConfig: { ...s.vehicleConfig, softCutRpm: numericVal - 200, maxRpm: numericVal } }));
-                            } else {
-                                const valMatch = text.match(/\b\d{4}\b/);
-                                if (valMatch) {
-                                    const parsedLimit = parseInt(valMatch[0], 10);
-                                    set(s => ({ vehicleConfig: { ...s.vehicleConfig, softCutRpm: parsedLimit - 200, maxRpm: parsedLimit } }));
-                                }
-                            }
+                        } else if (proposal.kind === 'STOP_LOGGING') {
+                            void get().stopLogging();
                         }
                     }
                 } catch (e) {
                     console.warn("Copilot API response generation failed. Activating native rule-based fail-safe logic.", e);
                 }
 
-                // Rule-based Fail-Safe Fallback when API fails or does not execute an action
+                // Rule-based fallback remains observation/read-only. It cannot
+                // change calibration, launch, rev-limit or subsystem state.
                 if (!aiResponse) {
-                    aiResponse = "Command processed. Subsystem telemetry verified.";
+                    aiResponse = "I can observe, explain and record, but this release cannot control the vehicle.";
                     const lowerText = text.toLowerCase();
                     
                     if (lowerText.includes("boost") && lowerText.includes("increase")) {
-                        const currentBoost = get().tuning.boostTarget;
-                        const newBoost = Math.min(22, currentBoost + 2);
-                        set(s => ({ tuning: { ...s.tuning, boostTarget: newBoost } }));
-                        aiResponse = `ASI Override: Increasing target MAP to ${newBoost} BAR. Real-time PID compensation active.`;
+                        aiResponse = commercialControlDenial('Boost-target change');
                     } else if (lowerText.includes("status") || lowerText.includes("report")) {
                         const data = get().latestData;
-                        aiResponse = `System Health Report: Engine is at ${data.engineTemp}°C. Current load is ${data.engineLoad.toFixed(1)}%. EKF Fusion stability is at ${((1 - get().ekfStats.fusionUncertainty) * 100).toFixed(1)}%. All core vectors are COHERENT.`;
+                        const sourceLabel = data.source === 'sim' ? 'SIMULATED' : (data.source ?? 'UNKNOWN').toUpperCase();
+                        aiResponse = `Telemetry report (${sourceLabel}): coolant ${data.engineTemp}°C, load ${data.engineLoad.toFixed(1)}%, fusion uncertainty ${get().ekfStats.fusionUncertainty.toFixed(3)}. This is an observation, not a vehicle safety certification.`;
                     } else if (lowerText.includes("diagnose") || lowerText.includes("scan")) {
                         get().scanVehicle();
-                        aiResponse = "Autonomous Diagnostic Sweep initiated. Probing CAN-Bus for latent fault signatures and ECU anomaly states...";
+                        aiResponse = "Read-only diagnostic scan started. No DTCs will be cleared and no active tests will run.";
                     } else if (lowerText.includes("launch")) {
-                        set(s => ({ launchControl: { ...s.launchControl, enabled: true } }));
-                        aiResponse = "Neural Launch Control ARMED. 2-Step ignition cut strategy locked at pre-spool RPM. Awaiting driver trigger.";
+                        aiResponse = commercialControlDenial('Launch-control arming');
                     } else if (lowerText.includes("calibrate") || lowerText.includes("sensor")) {
-                        get().calibrateSensors();
-                        aiResponse = "Sensory Fusion recalibration sequence engaged. Zeroing multi-axis IMU offsets and converging GPS telemetry logic...";
+                        if (latestData.speed <= 0.5) {
+                            get().calibrateSensors();
+                            aiResponse = "Stationary sensor calibration started.";
+                        } else {
+                            aiResponse = "Sensor calibration was not started while the vehicle is moving.";
+                        }
                     } else if (lowerText.includes("log") && lowerText.includes("start")) {
                         get().startLogging();
-                        aiResponse = "High-frequency telemetry logging ACTIVE. Writing binary data payload to local buffer at 100Hz.";
+                        aiResponse = "Telemetry logging started using the configured capture frequency.";
                     } else if (lowerText.includes("dyno") || lowerText.includes("horsepower")) {
-                        get().startDynoRun();
-                        aiResponse = "Virtual Dynamometer engaged in predictive mode. Analyzing kinematic load tensors to estimate peak torque curves.";
+                        aiResponse = "I can review a recorded dyno or acceleration run, but I will not automatically start or control one.";
                     } else if (lowerText.includes("anti") && lowerText.includes("lag")) {
-                        get().toggleAls();
-                        aiResponse = "Rally-spec Anti-Lag System toggled. CAUTION: Elevated exhaust gas temperatures predicted. Turbocharger bearing wear accelerated.";
+                        aiResponse = commercialControlDenial('Anti-lag control');
                     } else if (lowerText.includes("rev") && lowerText.includes("limit")) {
-                        const valMatch = text.match(/\b\d{4}\b/);
-                        if (valMatch) {
-                            const newLimit = parseInt(valMatch[0], 10);
-                            set(s => ({ vehicleConfig: { ...s.vehicleConfig, softCutRpm: newLimit - 200, maxRpm: newLimit } }));
-                            aiResponse = `ASI Override: Hard cut rev limit adjusted to ${newLimit} RPM. Soft cut progressive retard set ${newLimit - 200} RPM.`;
-                        } else {
-                            aiResponse = "Please specify a 4-digit numeric RPM value to adjust the rev limiter. Ex. 'Set rev limit to 7500'";
-                        }
+                        aiResponse = commercialControlDenial('Rev-limit change');
                     }
                 }
 
@@ -1906,7 +1871,7 @@ export const useVehicleStore = create<VehicleStoreState>()(
                 }));
             },
             clearCoPilotLog: () => {
-                set(s => ({ coPilot: { ...s.coPilot, messages: [] } }));
+                set(s => ({ coPilot: { ...s.coPilot, messages: [], actionProposals: [] } }));
             },
             readECUMapping: async (mappingType: TuningTableType) => {
                 if (!sdkInstance) return null;

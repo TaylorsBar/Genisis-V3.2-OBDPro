@@ -36,6 +36,7 @@ Against the verified local branch, 357 common files are byte-identical and 28 co
 | Restored app status/navigation shell | Prevents every route being treated as fullscreen and restores hardware status access | Migrated with an always-available menu handle in HUD/immersive mode |
 | Explicit simulator provenance | Prevents demo telemetry being labeled as fused EKF evidence | Corrected in `vehicleStore` |
 | Fail-closed telemetry compatibility boundary | Prevents a legacy numeric field from becoming AI evidence without per-channel provenance | Added as `TrackCoachEvidenceAdapter` with tests |
+| Natural-language model action payloads | High-value driver interface for boost, launch, anti-lag, limiter and workflow intent | Preserved through a typed broker as staged operator intent; direct ECU execution remains separated |
 | Adversarial numeric validation concepts | Rejects NaN, infinity and malformed calibration data | Retain as research test vectors; do not connect to customer flashing |
 | CI intent | Provides a starting checklist | Replace, do not copy: current workflow ignores lint failures and targets the wrong branches |
 
@@ -77,8 +78,9 @@ Against the verified local branch, 357 common files are byte-identical and 28 co
 1. Replace aggregate telemetry provenance with per-channel metadata: source timestamp, receive timestamp, quality, status and derivation.
 2. Feed the hardened ten-minute coach memory only through the explicit evidence adapter.
 3. Disable legacy cloud coaching that consumes unqualified history.
-4. Remove customer routing and service access to ECU write, security-access, active-test and DTC-clear functions.
-5. Move all calibration research to a separate non-deployable package/repository.
+4. Route natural-language control requests through the typed action broker: application-only actions may execute, calibration/control intent is staged, and destructive diagnostics are blocked.
+5. Remove customer routing and service access to ECU write, security-access, active-test and DTC-clear functions.
+6. Move all calibration research to a separate non-deployable package/repository.
 
 Exit: a simulated or stale value cannot reach AI, export, anomaly or certification lanes; the shipping server has no vehicle-write endpoint.
 
@@ -128,5 +130,7 @@ Exit: signed release candidate, reproducible build, zero open P0 defects and exp
 - Navigation/status-bar fix migrated.
 - Simulator-to-EKF provenance leak corrected.
 - Per-channel evidence adapter and rejection tests added.
+- Natural-language boost, launch, anti-lag, limiter and dyno requests are retained as visible, bounded action proposals.
+- Model payloads can still trigger read-only/app-only workflows such as logging, connection and diagnostic scan.
 - Hardened Gemini Live boundary and ten-minute memory preserved from the previous checkpoint.
 - No archive flash, write, seed/key or generated Android runtime was migrated.

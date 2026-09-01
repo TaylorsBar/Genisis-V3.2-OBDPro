@@ -4,6 +4,7 @@ import { NeuralLink } from './NeuralLink';
 import { MathKernel } from './MathKernel';
 import { BlockchainLogger } from './BlockchainLogger';
 import { TuningGoal, GeneratedMapResult, ObdConnectionState, AIScanProgress, TuningTableType, PIDDefinition, ObdOptimizationConfig } from '../types';
+import { assessDiagnosticCommand, commercialControlDenial } from './CommercialReleasePolicy';
 
 /**services/NeuralLink.ts
  * CartelWorxSDK
@@ -68,6 +69,16 @@ export class CartelWorxSDK {
      * Sequence: Extended Session -> Security Access -> Mandatory Backup -> Erase -> Flash -> Checksum Verify
      */
     public async flashECU(binaryData: Uint8Array, isRollback: boolean = false): Promise<boolean> {
+        void binaryData;
+        void isRollback;
+        this.statusCallback?.({
+            stage: commercialControlDenial('ECU flashing'),
+            progress: 0,
+            complete: true,
+        });
+        return false;
+        /* Research implementation retained below for extraction to the isolated
+           calibration repository. It is unreachable in this commercial build.
         if (!this.statusCallback) return false;
 
         try {
@@ -203,13 +214,20 @@ export class CartelWorxSDK {
                  this.statusCallback({ stage: `CRITICAL ERROR DURING ROLLBACK: ${e.message}`, progress: 0, complete: true });
             }
             return false;
-        }
+        } */
     }
 
     /**
      * Emergency Recovery: Restore original calibration from the local recovery buffer.
      */
     public async rollbackECU(): Promise<boolean> {
+        this.statusCallback?.({
+            stage: commercialControlDenial('ECU rollback'),
+            progress: 0,
+            complete: true,
+        });
+        return false;
+        /* Research implementation retained below for isolated migration.
         if (!CartelWorxSDK.rollbackBuffer || !CartelWorxSDK.rollbackKey) {
             this.statusCallback?.({ stage: "ROLLBACK FAILED: No valid backup available.", progress: 0, complete: true });
             return false;
@@ -224,7 +242,7 @@ export class CartelWorxSDK {
         const decryptedBuffer = this.decryptBuffer(CartelWorxSDK.rollbackBuffer, CartelWorxSDK.rollbackKey);
 
         // Re-execute flash pipeline using the rollback buffer
-        return await this.flashECU(decryptedBuffer, true);
+        return await this.flashECU(decryptedBuffer, true); */
     }
 
     public async generateTune(goal: TuningGoal, currentMaps: { ignitionTable: number[][], veTable?: number[][], boostTable?: number[][], torqueTable?: number[][] }, targetTable: TuningTableType = 'ign'): Promise<GeneratedMapResult> {
@@ -246,10 +264,14 @@ export class CartelWorxSDK {
     public getDetectedVin() { return this.neuralLink.getVin(); }
     public getProtocol() { return this.neuralLink.getProtocol(); }
     public async scanForFaults() { return this.neuralLink.getDTCs(); }
-    public async clearFaults() { return this.neuralLink.clearDTCs(); }
-    public async primeFuelSystem() { return this.neuralLink.primeFuel(); }
-    public async runActiveTest(id: string, value: string) { return this.neuralLink.activeTest(id, value); }
-    public async executeRawCommand(cmd: string) { return this.neuralLink.executeRawCommand(cmd); }
+    public async clearFaults() { return false; }
+    public async primeFuelSystem() { return false; }
+    public async runActiveTest(_id: string, _value: string) { return false; }
+    public async executeRawCommand(cmd: string) {
+        const decision = assessDiagnosticCommand(cmd);
+        if (!decision.allowed) throw new Error(decision.reason);
+        return this.neuralLink.executeRawCommand(decision.normalizedCommand);
+    }
     public async readMemoryByAddress(address: number, sizeBytes: number) { return this.neuralLink.readMemoryByAddress(address, sizeBytes); }
 
     /**
